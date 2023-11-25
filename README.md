@@ -6,5 +6,6 @@ TODO
 https://github.com/jeffersonHsieh/visualnav-transformer.git
 
 ## Simulation
- D:\"New folder"\AirSim\Unreal\Environments\Blocks\Binaries\Win64\Blocks.exe -settings=D:\"New folder"\ReasonedExplorer\src\settings.json
+ Open Airsim Simulator: D:\"New folder"\AirSim\Unreal\Environments\Blocks\Binaries\Win64\Blocks.exe -settings=D:\"New folder"\ReasonedExplorer\src\settings.json
  
+ Run ReasonedExploer:  python .\simulate.py 
