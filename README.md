@@ -7,11 +7,12 @@ pip install -e visualnav-transformer/train
 pip install -e visualnav-transformer/diffusion_policy
 pip install airsim
 ```
+For Windows, you should install these in the Windows environment not WSL2.
 
 # Airsim Setup
 We tested this setup on Ubuntu 20.04
 1. Build Unreal Engine 4.27 from github src
-2. Install [ROS-noetic](https://wiki.ros.org/noetic/Installation/Ubuntu). Then install tf2 sensor and mavros packages: `sudo apt-get install ros-noetic-tf2-sensor-msgs ros-noetic-tf2-geometry-msgs ros-noetic-mavros*`
+2. Install [ROS-noetic](https://wiki.ros.org/noetic/Installation/Ubuntu). Then install tf2 sensor and mavros packages: `sudo apt-get install ros-noetic-tf2-sensor-msgs ros-noetic-tf2-geometry-msgs ros-noetic-mavros*`. For Windows, you would do this in WSL2.
 3. Build Airsim from src
 ```
 git clone https://github.com/Microsoft/AirSim.git;
@@ -19,7 +20,10 @@ cd AirSim;
 ./setup.sh;
 ./build.sh;
 ```
+For Windows you can just download the precompiled binaries from releases.
+
 4. Build Airsim RosBridge using Catkin
+For Windows, you would do the following steps in WSL2.
 ```
 pip install "git+https://github.com/catkin/catkin_tools.git#egg=catkin_tools"
 sudo apt update && sudo apt install gcc-8 g++-8
@@ -43,6 +47,7 @@ unzip ~/Downloads/AirSimNH.zip
 
 ~/Downloads/AirSimNH/LinuxNoEditor/AirSimNH/Binaries/Linux/AirSimNH -settings=$(realpath ReasonedExplorer/src/settings_linux.json)
 ```
+In Windows it would be a similar command.
 You can press `fn+F11` to toggle full screen mode, and you might need to do this to prevent the window from minimizing if you clicked on other apps
 ```
 echo "export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0" >> ~/.profile
@@ -56,6 +61,8 @@ source devel/setup.bash;
 roslaunch airsim_ros_pkgs airsim_node.launch
 ```
 there are several [ROS topics](https://microsoft.github.io/AirSim/airsim_ros_pkgs/#airsim-ros-wrapper-node) airsim is already publishing and subscribing to, we would need to launch the ROS Bridge if we want to interact with the simulation through ROS. 
+If you're on a Windows system, you should follow [this section](https://microsoft.github.io/AirSim/airsim_ros_pkgs/#setting-up-the-build-environment-on-windows10-using-wsl1-or-wsl2). Specifically, you would need to use a port following [this](https://microsoft.github.io/AirSim/airsim_ros_pkgs/#how-to-run-airsim-on-windows-and-ros-wrapper-on-wsl)
+
 
 Alternatively you can also directly interface with the [python client](https://microsoft.github.io/AirSim/api_docs/html/#)
 
