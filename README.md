@@ -38,7 +38,8 @@ For the airsim client to have something to interact, we need to first launch the
 # assuming we run this under the root dir of this project and unzipped inside download
 unzip ~/Downloads/AirSimNH.zip
 # we use the settings_linux.json to set a vehicle/multirotor, otherwise we would only have an external camera
-# 
+# the wasd key cannot control the vehicle! only external camera. Computer Vision mode also doesn't work as it only controls the external camera!
+# to control the vehicle without a remote control, you can use the python api (see the test setup section). 
 
 ~/Downloads/AirSimNH/LinuxNoEditor/AirSimNH/Binaries/Linux/AirSimNH -settings=$(realpath ReasonedExplorer/src/settings_linux.json)
 ```
