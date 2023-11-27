@@ -1,4 +1,4 @@
-name: nomad_train
+name: t2r_vint
 channels:
 - defaults
 - pytorch
