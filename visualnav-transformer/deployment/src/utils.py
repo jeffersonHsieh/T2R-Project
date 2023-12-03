@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 # ROS
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 
 # pytorch
 import torch
@@ -117,6 +118,10 @@ def msg_to_pil(msg: Image) -> PILImage.Image:
     pil_image = PILImage.fromarray(img)
     return pil_image
 
+def compressed_msg_to_pil(msg: CompressedImage) -> PILImage.Image:
+    # The data is compressed, so we need to decompress it first
+    pil_image = PILImage.open(io.BytesIO(msg.data))
+    return pil_image
 
 def pil_to_msg(pil_img: PILImage.Image, encoding="mono8") -> Image:
     img = np.asarray(pil_img)  

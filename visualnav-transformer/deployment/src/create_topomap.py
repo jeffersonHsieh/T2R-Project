@@ -1,14 +1,16 @@
 import argparse
 import os
-from utils import msg_to_pil 
+from utils import msg_to_pil,compressed_msg_to_pil 
 import time
 
 # ROS
 import rospy
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from sensor_msgs.msg import Joy
+import shutil
 
-IMAGE_TOPIC = "/usb_cam/image_raw"
+IMAGE_TOPIC = "/airsim_node/SimpleFlight/front_center/Scene/compressed"
 TOPOMAP_IMAGES_DIR = "../topomaps/images"
 obs_img = None
 
@@ -25,9 +27,9 @@ def remove_files_in_dir(dir_path: str):
             print("Failed to delete %s. Reason: %s" % (file_path, e))
 
 
-def callback_obs(msg: Image):
+def callback_obs(msg: CompressedImage):
     global obs_img
-    obs_img = msg_to_pil(msg)
+    obs_img = compressed_msg_to_pil(msg)
 
 
 def callback_joy(msg: Joy):
@@ -39,7 +41,7 @@ def main(args: argparse.Namespace):
     global obs_img
     rospy.init_node("CREATE_TOPOMAP", anonymous=False)
     image_curr_msg = rospy.Subscriber(
-        IMAGE_TOPIC, Image, callback_obs, queue_size=1)
+        IMAGE_TOPIC, CompressedImage, callback_obs, queue_size=1)
     subgoals_pub = rospy.Publisher(
         "/subgoals", Image, queue_size=1)
     joy_sub = rospy.Subscriber("joy", Joy, callback_joy)
