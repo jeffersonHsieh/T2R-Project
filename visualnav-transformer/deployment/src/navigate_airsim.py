@@ -218,6 +218,9 @@ def main(args: argparse.Namespace):
                 waypoints = to_numpy(waypoints)
                 # look for closest node
                 closest_node = np.argmin(distances)
+                
+                
+
                 # chose subgoal and output waypoints
                 if distances[closest_node] > args.close_threshold:
                     chosen_waypoint = waypoints[closest_node][args.waypoint]
@@ -227,7 +230,7 @@ def main(args: argparse.Namespace):
                         closest_node + 1, len(waypoints) - 1)][args.waypoint]
                     sg_img = topomap[start + min(closest_node + 1, len(waypoints) - 1)]
                 
-                print(chosen_waypoint)
+                print(start, end, closest_node, chosen_waypoint)
 
         # RECOVERY MODE
         if model_params["normalize"]:

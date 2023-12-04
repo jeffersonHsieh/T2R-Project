@@ -13,10 +13,14 @@ from ros_data import ROSData
 from utils import clip_angle
 
 
-# AIRSIM control
+
+# AIRSIM customizations
 import airsim
 from airsim.types import YawMode
+import math
 
+def set_initial_position(client, position):
+    client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(position[0], position[1], position[2]), airsim.to_quaternion(0, 0, 0)), True)
 
 # CONSTS
 CONFIG_PATH = "../config/sim_drone.yaml"
@@ -27,9 +31,18 @@ MAX_V = robot_config["max_v"]
 
 MAX_W = robot_config["max_w"]
 
+
+if "set_height" in robot_config:
+	HEIGHT = robot_config["set_height"]
+	if HEIGHT > 0:
+		HEIGHT*=-1
+else:
+	HEIGHT = -3
+
+
 VEL_TOPIC = robot_config["vel_navi_topic"]
 DT = 1/robot_config["frame_rate"]
-RATE = 9
+RATE = robot_config["frame_rate"]
 EPS = 1e-8
 WAYPOINT_TIMEOUT = 1 # seconds # TODO: tune this
 FLIP_ANG_VEL = np.pi/4
@@ -64,12 +77,15 @@ def pd_controller(waypoint: np.ndarray) -> Tuple[float]:
 		dx, dy, hx, hy = waypoint
 	# this controller only uses the predicted heading if dx and dy near zero
 	if len(waypoint) == 4 and np.abs(dx) < EPS and np.abs(dy) < EPS:
+		print('case 1')
 		v = 0
 		w = clip_angle(np.arctan2(hy, hx))/DT		
 	elif np.abs(dx) < EPS:
+		print('case 2')
 		v =  0
 		w = np.sign(dy) * np.pi/(2*DT)
 	else:
+		print('case 3')
 		v = dx / DT
 		w = np.arctan(dy/dx) / DT
 	v = np.clip(v, 0, MAX_V)
@@ -88,6 +104,10 @@ def callback_reached_goal(reached_goal_msg: Bool):
 	"""Callback function for the reached goal subscriber"""
 	global reached_goal
 	reached_goal = reached_goal_msg.data
+
+def check_for_collision(client):
+    collision_info = client.simGetCollisionInfo()
+    return collision_info.has_collided
 
 
 def main():
@@ -110,30 +130,38 @@ def main():
 			# import pdb;pdb.set_trace()
 			if reverse_mode:
 				v *= -1
-			
-			print(f"publishing new vel: {v}, {w}")
+
+			# TODO: tuning, should take degree
+			w = math.degrees(w)
+			# w*=10
+			print(f"publishing new vel: {v}, {w} (deg/s)")
 
 			# print(MAX_V, MAX_W)
 
-			# yaw = YawMode(is_rate=False, yaw_or_rate=w)
-			# client.moveByVelocityZBodyFrameAsync(v, 0, -3, 1,yaw_mode=yaw).join()
+			yaw = YawMode(is_rate=True, yaw_or_rate=float(w))
+			# use forward_only drivetrain to allow turning in place
+			client.moveByVelocityZBodyFrameAsync(float(v), float(0), HEIGHT, DT,yaw_mode=yaw,drivetrain=airsim.DrivetrainType.ForwardOnly).join()
+			
+			# # check for collision
+			# if check_for_collision(client):
+			# 	print("Collision detected!")
 
-			# # Get the state of the drone
-			state = client.getMultirotorState()
+			# # # Get the state of the drone
+			# state = client.getMultirotorState()
 
-			# Extract the orientation as a quaternion
-			orientation_q = state.kinematics_estimated.orientation
+			# # Extract the orientation as a quaternion
+			# orientation_q = state.kinematics_estimated.orientation
 
-			# Convert quaternion to Euler angles
-			orientation_euler = airsim.to_eularian_angles(orientation_q)
+			# # Convert quaternion to Euler angles
+			# orientation_euler = airsim.to_eularian_angles(orientation_q)
 
-			# Yaw is the third element in the Euler angles (roll, pitch, yaw)
-			current_yaw = orientation_euler[2]
+			# # Yaw is the third element in the Euler angles (roll, pitch, yaw)
+			# current_yaw = orientation_euler[2]
 
-			yaw = YawMode(is_rate=False, yaw_or_rate=clip_angle(current_yaw + w))
-			vx = v * np.cos(current_yaw)
-			vy = v * np.sin(current_yaw)
-			client.moveByVelocityZAsync(vx, vy, -3, 1, yaw_mode=yaw).join()
+			# yaw = YawMode(is_rate=False, yaw_or_rate=clip_angle(current_yaw + w))
+			# vx = v * np.cos(current_yaw)
+			# vy = v * np.sin(current_yaw)
+			# client.moveByVelocityZAsync(vx, vy, HEIGHT, 1, yaw_mode=yaw).join()
 
 			vel_msg.linear.x = v
 			vel_msg.angular.z = w
@@ -143,4 +171,10 @@ def main():
 	
 
 if __name__ == '__main__':
-	main()
+	try:
+		main()
+	
+	finally:
+		print('killing gracefully...')
+		set_initial_position(client, [0, 0, HEIGHT])
+		client.landAsync().join()

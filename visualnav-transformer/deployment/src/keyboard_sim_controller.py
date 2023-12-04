@@ -3,10 +3,25 @@ import pynput
 import math
 import sys
 
+import yaml
+CONFIG_PATH = "../config/sim_drone.yaml"
+with open(CONFIG_PATH, "r") as f:
+	robot_config = yaml.safe_load(f)
+MAX_V = robot_config["max_v"]
+# original script default is 1.5
+
+MAX_W = robot_config["max_w"] # rad/sec
+DEFAULT_YAW_RATE = 50 # math.degrees(MAX_W) # deg/sec
+# original script default is 50 deg/s * 0.2 secs
+
 def init_flight(client: airsim.MultirotorClient):
     client.enableApiControl(True)
     client.armDisarm(True)
     client.takeoffAsync().join()
+    # get height
+    _,_,z = get_drone_position(client)
+    print(f"Height: {z}")
+    client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,z), airsim.to_quaternion(0, 0, 0)), True)
     print("Ready to fly!")
 
 def get_drone_position(client: airsim.MultirotorClient):
@@ -17,7 +32,7 @@ def get_drone_orientation(client: airsim.MultirotorClient):
     orientation = client.simGetObjectPose(client.listVehicles()[0]).orientation
     return quaternion_to_euler_angles(orientation.w_val, orientation.x_val, orientation.y_val, orientation.z_val)
 
-def on_press(key: pynput.keyboard.Key, client: airsim.MultirotorClient, step: float = 1, velocity: float = 1.5, yaw_rate: float = 50, yaw_duration: float = 0.2):
+def on_press(key: pynput.keyboard.Key, client: airsim.MultirotorClient, step: float = 1, velocity: float = MAX_V, yaw_rate: float = DEFAULT_YAW_RATE, yaw_duration: float = 0.2):
     if not isinstance(key, pynput.keyboard.Key):
         x, y, z = get_drone_position(client)
         yaw, pitch, roll = get_drone_orientation(client)
@@ -43,8 +58,13 @@ def on_press(key: pynput.keyboard.Key, client: airsim.MultirotorClient, step: fl
         if key.char == 'x':
             client.moveToPositionAsync(x, y, z + step, velocity)
         if key.char == 'c':
-            client.reset()
+            print('killing gracefully...')
+            client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,0), airsim.to_quaternion(0, 0, 0)), True)
+            client.armDisarm(False)
+            client.enableApiControl(False)
             sys.exit()
+        #     client.reset()
+        #     sys.exit()
 
 
 def control_loop(client: airsim.MultirotorClient):
@@ -67,10 +87,16 @@ def quaternion_to_euler_angles(w, x, y, z):
 
 def main():
     client = airsim.MultirotorClient()
-    client.reset()
+    # client.reset()
+    # try:
     init_flight(client)
     control_loop(client)
-    client.reset()
+        # client.reset()
+    # finally:
+        # print('killing gracefully...')
+        # client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,0), airsim.to_quaternion(0, 0, 0)), True)
+        # client.armDisarm(False)
+        # client.enableApiControl(False)
 
 if __name__ == "__main__":
     main()
