@@ -2,6 +2,7 @@
 
 # Create a new tmux session
 session_name="vint_locobot_$(date +%s)"
+ros_bridge_setup="~/Desktop/AirSim/ros/devel/setup.bash"
 tmux new-session -d -s $session_name
 
 # Split the window into four panes
@@ -16,7 +17,7 @@ tmux selectp -t 0    # go back to the first pane
 
 # Run the roslaunch command in the first pane
 tmux select-pane -t 0
-tmux send-keys "source ~/Desktop/AirSim/ros/devel/setup.bash" Enter
+tmux send-keys "source ${ros_bridge_setup}" Enter
 tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch" Enter
 
 # Run the navigate.py script with command line args in the second pane
@@ -28,7 +29,7 @@ tmux send-keys "python navigate_airsim.py $@"
 tmux select-pane -t 2
 # tmux send-keys "conda activate t2r_vint" Enter
 # tmux send-keys "python joy_teleop.py" Enter
-tmux send-keys "source ~/Desktop/AirSim/ros/devel/setup.bash" Enter
+tmux send-keys "source ${ros_bridge_setup}" Enter
 tmux send-keys "roslaunch airsim_ros_pkgs position_controller_simple.launch"
 
 # Run the pd_controller.py script in the fourth pane

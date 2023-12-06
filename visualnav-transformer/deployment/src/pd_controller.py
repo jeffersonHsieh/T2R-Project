@@ -54,7 +54,14 @@ reached_goal = False
 reverse_mode = False
 current_yaw = None
 
-client = airsim.MultirotorClient()
+HOST = '127.0.0.1' # Standard loopback interface address (localhost)
+from platform import uname
+import os
+if 'linux' in uname().system.lower() and 'microsoft' in uname().release.lower(): # In WSL2
+    if 'WSL_HOST_IP' in os.environ:
+        HOST = os.environ['WSL_HOST_IP']
+        print("Using WSL2 Host IP address: ", HOST)
+client = airsim.MultirotorClient(ip=HOST)
 client.confirmConnection()
 # client.reset()
 client.enableApiControl(True)
