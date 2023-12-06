@@ -6,8 +6,9 @@ conda env create -f train_environment.yml
 pip install -e visualnav-transformer/train
 pip install -e visualnav-transformer/diffusion_policy
 pip install airsim
+pip install pynput
 ```
-For Windows, you should install these in the Windows environment not WSL2.
+For Windows, you should install these in WSL2.
 
 # Airsim Setup
 We tested this setup on Ubuntu 20.04
@@ -20,7 +21,7 @@ cd AirSim;
 ./setup.sh;
 ./build.sh;
 ```
-For Windows you can just download the precompiled binaries from releases.
+For Windows you need to build this in WSL2
 
 4. Build Airsim RosBridge using Catkin
 For Windows, you would do the following steps in WSL2.
@@ -74,10 +75,20 @@ cd tests
 python test_airsim_ros.py
 ```
 
+For WSL, you might also want to change the settings.json by adding `"LocalHostIp": "YOUR WSL_HOST_IP",`
+You can get it by `export WSL_HOST_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')`
+
 Python Interactive Shell
 ```
 import airsim
-client=airsim.MultirotorClient()
+HOST = '127.0.0.1' # Standard loopback interface address (localhost)
+from platform import uname
+import os
+if 'linux' in uname().system.lower() and 'microsoft' in uname().release.lower(): # In WSL2
+    if 'WSL_HOST_IP' in os.environ:
+        HOST = os.environ['WSL_HOST_IP']
+        print("Using WSL2 Host IP address: ", HOST)
+client = airsim.MultirotorClient(ip=HOST)
 client.confirmConnection()
 client.reset() # should be called before enabling ApiControl
 client.enableApiControl(True)
@@ -87,3 +98,33 @@ client.moveToPositionAsync(60, -40, -20, 5, timeout_sec=10).join() # move to wor
 client.moveByVelocityAsync(1,0,-1,duration=10).join()
 ```
 
+
+# Training Data Collection
+## ROS-Bags
+There are two ways to collect the rosbag trajectories. One is to use WASD control, the other is use nomad for exploration and use WASD to override in case of collision, since the simulation environment is out of distribution.
+
+```
+cd visualnav-transformer/deployment/src
+mkdir ../model_weights
+```
+
+Remember to set the correct path to the rosbridge setup script you've built in these scripts
+```
+ros_bridge_setup=/path/to/AirSim/ros/devel/setup.bash
+```
+If you're on windows, uncomment these lines in the script and comment out the original roslaunch
+```
+export WSL_HOST_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
+roslaunch airsim_ros_pkgs airsim_node.launch output:=screen host:=$WSL_HOST_IP
+```
+
+
+Only WASD. This script starts 3 tmux panes, the ros bridge and the keyboard controller would get started automatically
+
+But you would need to manually press "ENTER" to start recording. Once you're done, interrupt the ros record command.
+The bags will be saved under `visualnav-transformer/deployment/topomaps/bags`
+If you're on windows comment this section out if you're using WSL, launch the keyboard_sim_controller.py in Windows OS not WSL
+```
+./record_bag.sh airsim_test
+
+```
