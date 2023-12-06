@@ -5,6 +5,8 @@ max_w: 0.2 #0.8 # rad/s
 frame_rate: 4 # Hz
 graph_rate: 0.3333 # Hz  
 
+set_height: -3
+
 # topic names (modify for different robots/nodes)
 # the ros topic for controls on AirSim doesn't work
 vel_teleop_topic: /cmd_vel_mux/input/teleop 
