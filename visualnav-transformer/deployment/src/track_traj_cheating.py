@@ -54,8 +54,7 @@ def follow_trajectory(client, trajectory, velocity):
 
         yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=math.degrees(yaw_angle))
         print("tracking pos, yaw = ", next_point, math.degrees(yaw_angle))
-        # client.moveToPositionAsync(*next_point, velocity, yaw_mode=yaw_mode).join()
-        client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(*next_point), airsim.to_quaternion(0, 0, 0)), True)
+        client.moveToPositionAsync(*next_point, velocity, yaw_mode=yaw_mode).join()
         time.sleep(1)  # Wait for stability
 
         # if check_for_collision(client):
@@ -72,14 +71,7 @@ def main():
     trajectory_file = Path(sys.argv[1])
     # log file is at the same directory as the trajectory file, with the name prefixed with directory name
     track_log = trajectory_file.parent / (trajectory_file.parent.name + "_track_log.csv")
-    HOST = '127.0.0.1' # Standard loopback interface address (localhost)
-    from platform import uname
-    import os
-    if 'linux' in uname().system.lower() and 'microsoft' in uname().release.lower(): # In WSL2
-        if 'WSL_HOST_IP' in os.environ:
-            HOST = os.environ['WSL_HOST_IP']
-            print("Using WSL2 Host IP address: ", HOST)
-    client = airsim.MultirotorClient(ip=HOST)
+    client = airsim.MultirotorClient()
     client.confirmConnection()
     client.enableApiControl(True)
     client.armDisarm(True)

@@ -15,7 +15,6 @@ session_name=$1
 
 TRAJECTORY_DIR=$2
 TRACK_SCRIPT="python track_traj_cheating.py"
-ros_bridge_setup="~/Desktop/AirSim/ros/devel/setup.bash"
 
 # Split the window into three panes
 # some panes' last command won't be executed. 
@@ -27,12 +26,12 @@ tmux selectp -t 0    # go back to the first pane
 tmux splitw -h -p 50 # split it into two halves
 
 tmux select-pane -t 0
-tmux send-keys "source ${ros_bridge_setup}" Enter
+tmux send-keys "source ~/Desktop/AirSim/ros/devel/setup.bash" Enter
 tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch" Enter
 
 # Run the teleop.py script in the second pane
 tmux select-pane -t 1
-tmux send-keys "source ${ros_bridge_setup}" Enter
+tmux send-keys "source ~/Desktop/AirSim/ros/devel/setup.bash" Enter
 # takeoff service
 tmux send-keys "rosservice call /airsim_node/SimpleFlight/takeoff \"waitOnLastTask: true\""
 

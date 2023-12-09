@@ -27,9 +27,3 @@ sacson:
   odom_process_func: "nav_to_xy_yaw"
 
 # add your own datasets below:
-airsim_explore:
-  odomtopics: "/airsim_node/SimpleFlight/odom_local_ned"
-  imtopics: "/airsim_node/SimpleFlight/front_center/Scene/compressed"
-  ang_offset: 0.0
-  img_process_func: "process_sacson_img" #"process_scand_img"
-  odom_process_func: "nav_to_xy_yaw"
