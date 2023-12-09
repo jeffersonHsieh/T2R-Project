@@ -1,0 +1,15 @@
+<launch>
+    <!-- Argument Definitions -->
+    <!-- <arg name="nodelet_manager_name" default="nodelet_manager"/> -->
+    <arg name="config_file" default="/home/jefferson/Desktop/T2R-Project/visualnav-transformer/deployment/config/twist_mux.yaml"/>
+    
+    <!-- Nodelet Manager -->
+    <!-- <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager"/> -->
+    
+    <!-- Twist Multiplexer -->
+    <!-- Load the twist_mux configuration -->
+    <rosparam file="$(arg config_file)" command="load"/>
+
+    <!-- Twist Multiplexer -->
+    <node pkg="twist_mux" type="twist_mux" name="twist_mux" output="screen" />
+</launch>

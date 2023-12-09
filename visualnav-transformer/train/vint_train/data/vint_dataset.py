@@ -283,6 +283,7 @@ class ViNT_Dataset(Dataset):
             actions = waypoints[1:]
         
         if self.normalize:
+            # divide by the dataset specific waypoint spacing, and multiply by the normalized spacing
             actions[:, :2] /= self.data_config["metric_waypoint_spacing"] * self.waypoint_spacing
             goal_pos /= self.data_config["metric_waypoint_spacing"] * self.waypoint_spacing
 

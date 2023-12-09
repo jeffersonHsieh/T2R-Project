@@ -196,6 +196,7 @@ def main(args: argparse.Namespace):
                 naction = naction[0] 
                 chosen_waypoint = naction[args.waypoint]
             elif (len(context_queue) > model_params["context_size"]):
+                # double check the queue since it might get updated in between?
                 # import pdb;pdb.set_trace()
                 start = max(closest_node - args.radius, 0)
                 end = min(closest_node + args.radius + 1, goal_node)
@@ -230,7 +231,8 @@ def main(args: argparse.Namespace):
                         closest_node + 1, len(waypoints) - 1)][args.waypoint]
                     sg_img = topomap[start + min(closest_node + 1, len(waypoints) - 1)]
                 
-                print(start, end, closest_node, chosen_waypoint)
+                print('start,end,closest_node_idx,temporal_dist of closest')
+                print(start, end, closest_node,distances[closest_node])
 
         # RECOVERY MODE
         if model_params["normalize"]:
