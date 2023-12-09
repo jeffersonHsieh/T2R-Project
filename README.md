@@ -1,5 +1,6 @@
 # T2R-Project
 
+
 # install dependencies
 ```
 conda env create -f train_environment.yml
@@ -49,6 +50,11 @@ unzip ~/Downloads/AirSimNH.zip
 ~/Downloads/AirSimNH/LinuxNoEditor/AirSimNH/Binaries/Linux/AirSimNH -settings=$(realpath ReasonedExplorer/src/settings_linux.json)
 ```
 In Windows it would be a similar command.
+```
+D:\"New folder"\AirSim\Unreal\Environments\Blocks\Binaries\Win64\Blocks.exe -settings=D:\"New folder"\ReasonedExplorer\src\settings.json
+ 
+Run ReasonedExploer:  python .\simulate.py 
+```
 You can press `fn+F11` to toggle full screen mode, and you might need to do this to prevent the window from minimizing if you clicked on other apps
 ```
 echo "export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0" >> ~/.profile
@@ -128,3 +134,4 @@ If you're on windows comment this section out if you're using WSL, launch the ke
 ./record_bag.sh airsim_test
 
 ```
+
