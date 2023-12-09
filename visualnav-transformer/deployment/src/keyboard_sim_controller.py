@@ -86,7 +86,7 @@ def quaternion_to_euler_angles(w, x, y, z):
     return [yaw, pitch, roll]
 
 def main():
-    client = airsim.MultirotorClient()
+    client = airsim.MultirotorClient(ip="172.18.80.1")
     # client.reset()
     # try:
     init_flight(client)

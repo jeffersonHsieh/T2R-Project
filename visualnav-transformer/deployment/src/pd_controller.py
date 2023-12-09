@@ -54,7 +54,7 @@ reached_goal = False
 reverse_mode = False
 current_yaw = None
 
-client = airsim.MultirotorClient()
+client = airsim.MultirotorClient(ip="172.18.80.1")
 client.confirmConnection()
 # client.reset()
 client.enableApiControl(True)
