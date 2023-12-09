@@ -10,9 +10,6 @@ import lmdb
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
-import torchvision.transforms as transforms
-
-from PIL import Image
 
 from vint_train.data.data_utils import (
     img_path_to_data,
@@ -43,8 +40,6 @@ class ViNT_Dataset(Dataset):
         normalize: bool = True,
         obs_type: str = "image",
         goal_type: str = "image",
-        goal_input_type: str = "image",  # New parameter to specify the type of goal input
-        text_data_folder: Optional[str] = None,  # New parameter for the path to text files
     ):
         """
         Main ViNT dataset class
@@ -127,11 +122,6 @@ class ViNT_Dataset(Dataset):
             self.num_action_params = 3
         else:
             self.num_action_params = 2
-
-        self.goal_input_type = goal_input_type
-        if self.goal_input_type == "text" and text_data_folder is not None:
-            self.text_data_folder = text_data_folder
-
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -234,13 +224,6 @@ class ViNT_Dataset(Dataset):
             with open(index_to_data_path, "wb") as f:
                 pickle.dump((self.index_to_data, self.goals_index), f)
 
-
-    def _load_text(self, trajectory_name, time):
-        text_file_path = os.path.join(self.text_data_folder, trajectory_name, f"{time}.txt")
-        with open(text_file_path, 'r') as file:
-            text_data = file.read()
-        return text_data
-
     def _load_image(self, trajectory_name, time):
         image_path = get_data_path(self.data_folder, trajectory_name, time)
 
@@ -291,10 +274,6 @@ class ViNT_Dataset(Dataset):
 
         return actions, goal_pos
     
-    def _get_data_type(self):
-        return torch.float32 if self.goal_input_type == "image" else torch.int64
-
-    
     def _get_trajectory(self, trajectory_name):
         if trajectory_name in self.trajectory_cache:
             return self.trajectory_cache[trajectory_name]
@@ -342,15 +321,7 @@ class ViNT_Dataset(Dataset):
         ])
 
         # Load goal image
-        # goal_image = self._load_image(f_goal, goal_time)
-        # Load goal data based on goal_input_type
-        if self.goal_input_type == "image":
-            goal_data = self._load_image(f_goal, goal_time)
-        elif self.goal_input_type == "text":
-            goal_data = self._load_text(f_goal, goal_time)
-        else:
-            raise ValueError(f"Invalid goal input type {self.goal_input_type}")
-
+        goal_image = self._load_image(f_goal, goal_time)
 
         # Load other trajectory data
         curr_traj_data = self._get_trajectory(f_curr)
@@ -384,7 +355,7 @@ class ViNT_Dataset(Dataset):
 
         return (
             torch.as_tensor(obs_image, dtype=torch.float32),
-            torch.as_tensor(goal_data, dtype=self._get_data_type()),  # Changed to goal_data
+            torch.as_tensor(goal_image, dtype=torch.float32),
             actions_torch,
             torch.as_tensor(distance, dtype=torch.int64),
             torch.as_tensor(goal_pos, dtype=torch.float32),

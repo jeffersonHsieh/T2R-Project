@@ -56,7 +56,6 @@ image_size: [85, 64] # width, height
 goal_type: "image"
 
 datasets:
-
   # go_stanford:
   #   data_folder: /mnt/efs/fs1/t2r/visualnav-transformer/go_stanford # datasets/stanford_go_new
   #   train: /mnt/efs/fs1/t2r/visualnav-transformer/train/vint_train/data/data_splits/go_stanford/train/
@@ -69,7 +68,7 @@ datasets:
     train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore/train/
     test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore/test/
     end_slack: 0
-    goals_per_obs: 1 # increase dataset size
+    goals_per_obs: 2 # increase dataset size
     negative_mining: True
 
   # private datasets (uncomment if you have access)

@@ -49,17 +49,14 @@ tmux selectp -t 0    # go back to the first pane
 
 # Run the explore_airsim.py script with command line args in the first pane
 tmux select-pane -t 0
-
 tmux send-keys "conda activate t2r_vint" Enter
 # pass args except the first one (which is the name of the rosbag
 tmux send-keys "python explore_airsim.py ${@:2}" Enter
-
 
 # Run the teleop.py script in the second pane
 tmux select-pane -t 1
 tmux send-keys "conda activate t2r_vint" Enter
 tmux send-keys "python keyboard_vel_mux_controller.py" Enter
-
 
 
 # Run the teleop.py script in the third pane

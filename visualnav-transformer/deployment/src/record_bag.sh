@@ -17,14 +17,10 @@ tmux splitw -v -p 50 # split it into two halves
 
 # Run the roslaunch command in the first pane
 tmux select-pane -t 0
-
 tmux send-keys "source ${ros_bridge_setup}" Enter
 
 # comment this and uncomment the next two line to run in wsl
 tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch" Enter
-# tmux send-keys "export WSL_HOST_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')" Enter
-# tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch output:=screen host:=$WSL_HOST_IP" Enter
-
 
 sleep 5
 
@@ -35,6 +31,8 @@ tmux send-keys "source ${ros_bridge_setup}" Enter
 tmux send-keys "roslaunch vint_airsim_mux.launch" Enter
 
 tmux select-window -t 0
+# tmux send-keys "export WSL_HOST_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')" Enter
+# tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch output:=screen host:=$WSL_HOST_IP" Enter
 
 # Run the teleop.py script in the second pane
 # comment this section out if you're using WSL, launch the keyboard_sim_controller.py in Windows OS not WSL
