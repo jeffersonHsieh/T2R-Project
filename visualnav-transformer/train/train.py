@@ -91,6 +91,10 @@ def main(config):
             data_config["waypoint_spacing"] = 1
 
         for data_split_type in ["train", "test"]:
+            data_config = config["datasets"][dataset_name]
+            # Determine goal input type based on config
+            goal_input_type = data_config.get("goal_input_type", "image")
+
             if data_split_type in data_config:
                     dataset = ViNT_Dataset(
                         data_folder=data_config["data_folder"],
@@ -110,10 +114,10 @@ def main(config):
                         end_slack=data_config["end_slack"],
                         goals_per_obs=data_config["goals_per_obs"],
                         normalize=config["normalize"],
-                        goal_type=config["goal_type"],
+                        # goal_type=config["goal_type"],
                         ###TEXT DATA INPUT
-                        goal_input_type="text",
-                        text_data_folder=data_config["text_data_folder"],
+                        goal_type=config["goal_type"],
+                        goal_input_type=goal_input_type,
                     )
                     if data_split_type == "train":
                         train_dataset.append(dataset)
