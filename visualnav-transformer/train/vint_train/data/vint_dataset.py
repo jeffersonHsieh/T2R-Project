@@ -224,6 +224,13 @@ class ViNT_Dataset(Dataset):
             with open(index_to_data_path, "wb") as f:
                 pickle.dump((self.index_to_data, self.goals_index), f)
 
+
+    def _load_text(self, trajectory_name, time):
+        text_file_path = os.path.join(self.text_data_folder, trajectory_name, "captions" ,f"{time}.txt")
+        with open(text_file_path, 'r') as file:
+            text_data = file.read()
+        return text_data
+
     def _load_image(self, trajectory_name, time):
         image_path = get_data_path(self.data_folder, trajectory_name, time)
 
@@ -285,79 +292,138 @@ class ViNT_Dataset(Dataset):
     def __len__(self) -> int:
         return len(self.index_to_data)
 
+    # def __getitem__(self, i: int) -> Tuple[torch.Tensor]:
+    #     """
+    #     Args:
+    #         i (int): index to ith datapoint
+    #     Returns:
+    #         Tuple of tensors containing the context, observation, goal, transformed context, transformed observation, transformed goal, distance label, and action label
+    #             obs_image (torch.Tensor): tensor of shape [3, H, W] containing the image of the robot's observation
+    #             goal_image (torch.Tensor): tensor of shape [3, H, W] containing the subgoal image 
+    #             dist_label (torch.Tensor): tensor of shape (1,) containing the distance labels from the observation to the goal
+    #             action_label (torch.Tensor): tensor of shape (5, 2) or (5, 4) (if training with angle) containing the action labels from the observation to the goal
+    #             which_dataset (torch.Tensor): index of the datapoint in the dataset [for identifying the dataset for visualization when using multiple datasets]
+    #     """
+    #     f_curr, curr_time, max_goal_dist = self.index_to_data[i]
+    #     f_goal, goal_time, goal_is_negative = self._sample_goal(f_curr, curr_time, max_goal_dist)
+
+    #     # Load images
+    #     context = []
+    #     if self.context_type == "temporal":
+    #         # sample the last self.context_size times from interval [0, curr_time)
+    #         context_times = list(
+    #             range(
+    #                 curr_time + -self.context_size * self.waypoint_spacing,
+    #                 curr_time + 1,
+    #                 self.waypoint_spacing,
+    #             )
+    #         )
+    #         context = [(f_curr, t) for t in context_times]
+    #     else:
+    #         raise ValueError(f"Invalid context type {self.context_type}")
+
+    #     obs_image = torch.cat([
+    #         self._load_image(f, t) for f, t in context
+    #     ])
+
+    #     # Load goal image
+    #     # goal_image = self._load_image(f_goal, goal_time)
+    #     # Load goal data based on goal_input_type
+    #     if self.goal_input_type == "image":
+    #         goal_data = self._load_image(f_goal, goal_time)
+    #     elif self.goal_input_type == "text":
+    #         goal_data = self._load_text(f_goal, goal_time)
+    #     else:
+    #         raise ValueError(f"Invalid goal input type {self.goal_input_type}")
+
+
+    #     # Load other trajectory data
+    #     curr_traj_data = self._get_trajectory(f_curr)
+    #     curr_traj_len = len(curr_traj_data["position"])
+    #     assert curr_time < curr_traj_len, f"{curr_time} and {curr_traj_len}"
+
+    #     goal_traj_data = self._get_trajectory(f_goal)
+    #     goal_traj_len = len(goal_traj_data["position"])
+    #     assert goal_time < goal_traj_len, f"{goal_time} an {goal_traj_len}"
+
+    #     # Compute actions
+    #     # import pdb;pdb.set_trace()
+    #     actions, goal_pos = self._compute_actions(curr_traj_data, curr_time, goal_time)
+        
+    #     # Compute distances
+    #     if goal_is_negative:
+    #         distance = self.max_dist_cat
+    #     else:
+    #         distance = (goal_time - curr_time) // self.waypoint_spacing
+    #         assert (goal_time - curr_time) % self.waypoint_spacing == 0, f"{goal_time} and {curr_time} should be separated by an integer multiple of {self.waypoint_spacing}"
+        
+    #     actions_torch = torch.as_tensor(actions, dtype=torch.float32)
+    #     if self.learn_angle:
+    #         actions_torch = calculate_sin_cos(actions_torch)
+        
+    #     action_mask = (
+    #         (distance < self.max_action_distance) and
+    #         (distance > self.min_action_distance) and
+    #         (not goal_is_negative)
+    #     )
+
+    #     return (
+    #         torch.as_tensor(obs_image, dtype=torch.float32),
+    #         torch.as_tensor(goal_data, dtype=self._get_data_type()),  # Changed to goal_data
+    #         actions_torch,
+    #         torch.as_tensor(distance, dtype=torch.int64),
+    #         torch.as_tensor(goal_pos, dtype=torch.float32),
+    #         torch.as_tensor(self.dataset_index, dtype=torch.int64),
+    #         torch.as_tensor(action_mask, dtype=torch.float32),
+    #     )
     def __getitem__(self, i: int) -> Tuple[torch.Tensor]:
-        """
-        Args:
-            i (int): index to ith datapoint
-        Returns:
-            Tuple of tensors containing the context, observation, goal, transformed context, transformed observation, transformed goal, distance label, and action label
-                obs_image (torch.Tensor): tensor of shape [3, H, W] containing the image of the robot's observation
-                goal_image (torch.Tensor): tensor of shape [3, H, W] containing the subgoal image 
-                dist_label (torch.Tensor): tensor of shape (1,) containing the distance labels from the observation to the goal
-                action_label (torch.Tensor): tensor of shape (5, 2) or (5, 4) (if training with angle) containing the action labels from the observation to the goal
-                which_dataset (torch.Tensor): index of the datapoint in the dataset [for identifying the dataset for visualization when using multiple datasets]
-        """
         f_curr, curr_time, max_goal_dist = self.index_to_data[i]
         f_goal, goal_time, goal_is_negative = self._sample_goal(f_curr, curr_time, max_goal_dist)
 
-        # Load images
-        context = []
-        if self.context_type == "temporal":
-            # sample the last self.context_size times from interval [0, curr_time)
-            context_times = list(
-                range(
-                    curr_time + -self.context_size * self.waypoint_spacing,
-                    curr_time + 1,
-                    self.waypoint_spacing,
-                )
+        # Load images for the current context
+        context_images = [
+            self._load_image(f_curr, t) for t in range(
+                curr_time - self.context_size * self.waypoint_spacing,
+                curr_time + 1,
+                self.waypoint_spacing
             )
-            context = [(f_curr, t) for t in context_times]
+        ]
+        obs_image = torch.stack(context_images)  # Stack images to create a tensor
+
+        # Load goal data based on goal_input_type
+        if self.goal_input_type == "image":
+            goal_data = self._load_image(f_goal, goal_time)
+        elif self.goal_input_type == "text":
+            goal_data = self._load_text(f_goal, goal_time)
         else:
-            raise ValueError(f"Invalid context type {self.context_type}")
-
-        obs_image = torch.cat([
-            self._load_image(f, t) for f, t in context
-        ])
-
-        # Load goal image
-        goal_image = self._load_image(f_goal, goal_time)
+            raise ValueError(f"Invalid goal input type {self.goal_input_type}")
 
         # Load other trajectory data
         curr_traj_data = self._get_trajectory(f_curr)
-        curr_traj_len = len(curr_traj_data["position"])
-        assert curr_time < curr_traj_len, f"{curr_time} and {curr_traj_len}"
-
         goal_traj_data = self._get_trajectory(f_goal)
-        goal_traj_len = len(goal_traj_data["position"])
-        assert goal_time < goal_traj_len, f"{goal_time} an {goal_traj_len}"
 
-        # Compute actions
-        # import pdb;pdb.set_trace()
+        # Compute actions and distances
         actions, goal_pos = self._compute_actions(curr_traj_data, curr_time, goal_time)
-        
-        # Compute distances
-        if goal_is_negative:
-            distance = self.max_dist_cat
-        else:
-            distance = (goal_time - curr_time) // self.waypoint_spacing
-            assert (goal_time - curr_time) % self.waypoint_spacing == 0, f"{goal_time} and {curr_time} should be separated by an integer multiple of {self.waypoint_spacing}"
-        
+        distance = (goal_time - curr_time) // self.waypoint_spacing if not goal_is_negative else self.max_dist_cat
+
         actions_torch = torch.as_tensor(actions, dtype=torch.float32)
-        if self.learn_angle:
-            actions_torch = calculate_sin_cos(actions_torch)
-        
+        distance_torch = torch.as_tensor(distance, dtype=torch.int64)
+        goal_pos_torch = torch.as_tensor(goal_pos, dtype=torch.float32)
+
         action_mask = (
             (distance < self.max_action_distance) and
             (distance > self.min_action_distance) and
             (not goal_is_negative)
         )
+        action_mask_torch = torch.as_tensor(action_mask, dtype=torch.float32)
 
+        # Package the observation, goal data, actions, and other information
         return (
-            torch.as_tensor(obs_image, dtype=torch.float32),
-            torch.as_tensor(goal_image, dtype=torch.float32),
+            obs_image,
+            goal_data,  # This will be either a tensor or text depending on goal_input_type
             actions_torch,
-            torch.as_tensor(distance, dtype=torch.int64),
-            torch.as_tensor(goal_pos, dtype=torch.float32),
+            distance_torch,
+            goal_pos_torch,
             torch.as_tensor(self.dataset_index, dtype=torch.int64),
-            torch.as_tensor(action_mask, dtype=torch.float32),
+            action_mask_torch,
         )
