@@ -22,7 +22,6 @@ IMPORT YOUR MODEL HERE
 """
 from vint_train.models.gnm.gnm import GNM
 from vint_train.models.vint.vint import ViNT
-from vint_train.models.langvint.langvint import LangViNT #Ours
 from vint_train.models.vint.vit import ViT
 from vint_train.models.nomad.nomad import NoMaD, DenseNetwork
 from vint_train.models.nomad.nomad_vint import NoMaD_ViNT, replace_bn_with_gn
@@ -111,9 +110,6 @@ def main(config):
                         goals_per_obs=data_config["goals_per_obs"],
                         normalize=config["normalize"],
                         goal_type=config["goal_type"],
-                        ###TEXT DATA INPUT
-                        goal_input_type="text",
-                        text_data_folder=data_config["text_data_folder"],
                     )
                     if data_split_type == "train":
                         train_dataset.append(dataset)
@@ -168,18 +164,6 @@ def main(config):
             mha_num_attention_layers=config["mha_num_attention_layers"],
             mha_ff_dim_factor=config["mha_ff_dim_factor"],
         )
-    elif config["model_type"] == "langvint":
-        model = LangViNT(
-            context_size=config["context_size"],
-            len_traj_pred=config["len_traj_pred"],
-            learn_angle=config["learn_angle"],
-            obs_encoder=config["obs_encoder"],
-            obs_encoding_size=config["obs_encoding_size"],
-            late_fusion=config["late_fusion"],
-            mha_num_attention_heads=config["mha_num_attention_heads"],
-            mha_num_attention_layers=config["mha_num_attention_layers"],
-            mha_ff_dim_factor=config["mha_ff_dim_factor"],
-        )
     elif config["model_type"] == "nomad":
         if config["vision_encoder"] == "nomad_vint":
             vision_encoder = NoMaD_ViNT(
@@ -191,7 +175,7 @@ def main(config):
             )
             vision_encoder = replace_bn_with_gn(vision_encoder)
         elif config["vision_encoder"] == "vib": 
-            vision_encoder = Vib(
+            vision_encoder = ViB(
                 obs_encoding_size=config["encoding_size"],
                 context_size=config["context_size"],
                 mha_num_attention_heads=config["mha_num_attention_heads"],
@@ -313,7 +297,7 @@ def main(config):
         if scheduler is not None:
             scheduler.load_state_dict(latest_checkpoint["scheduler"].state_dict())
 
-    if config["model_type"] == "vint" or config["model_type"] == "langvint" or config["model_type"] == "gnm": 
+    if config["model_type"] == "vint" or config["model_type"] == "gnm": 
         train_eval_loop(
             train_model=config["train"],
             model=model,
