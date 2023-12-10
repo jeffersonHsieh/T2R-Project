@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Tuple
 from efficientnet_pytorch import EfficientNet
 from vint_train.models.base_model import BaseModel
 from vint_train.models.langvint.self_attention import MultiLayerDecoder
+from transformers import CLIPProcessor, CLIPModel
 
 class LangViNT(BaseModel):
     def __init__(
@@ -72,6 +73,9 @@ class LangViNT(BaseModel):
         self.action_predictor = nn.Sequential(
             nn.Linear(32, self.len_trajectory_pred * self.num_action_params),
         )
+        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
 
     def forward(
         self, obs_img: torch.tensor, goal_img: torch.tensor,
@@ -139,3 +143,53 @@ class LangViNT(BaseModel):
                 action_pred[:, :, 2:].clone(), dim=-1
             )  # normalize the angle prediction
         return dist_pred, action_pred
+    
+    # def forward(self, obs_img: torch.Tensor, goal_text: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+    #     # Process observation images with EfficientNet
+    #     # Split the observation into context based on the context size
+    #     obs_img = torch.split(obs_img, 3, dim=1)
+    #     obs_img = torch.concat(obs_img, dim=0)
+
+    #     # Get the observation encoding
+    #     obs_encoding = self.obs_encoder.extract_features(obs_img)
+    #     obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
+    #     if self.obs_encoder._global_params.include_top:
+    #         obs_encoding = obs_encoding.flatten(start_dim=1)
+    #         obs_encoding = self.obs_encoder._dropout(obs_encoding)
+
+    #     obs_encoding = self.compress_obs_enc(obs_encoding)
+    #     obs_encoding = obs_encoding.reshape((self.context_size+1, -1, self.obs_encoding_size))
+    #     obs_encoding = torch.transpose(obs_encoding, 0, 1)
+
+    #     # Encode the goal text using CLIP
+    #     goal_inputs = self.clip_processor(text=goal_text, return_tensors="pt", padding=True, truncation=True)
+    #     goal_inputs = {key: val.to(self.device) for key, val in goal_inputs.items()}  # Move inputs to the same device as the model
+    #     goal_encoding = self.clip_model.get_text_features(**goal_inputs)
+
+    #     # Ensure goal_encoding is in the correct shape
+    #     if len(goal_encoding.shape) == 2:
+    #         goal_encoding = goal_encoding.unsqueeze(1)
+
+    #     # Concatenate the goal encoding to the observation encoding
+    #     tokens = torch.cat((obs_encoding, goal_encoding), dim=1)
+
+    #     # Pass through the decoder
+    #     final_repr = self.decoder(tokens)
+
+    #     # Predict distance and actions
+    #     dist_pred = self.dist_predictor(final_repr)
+    #     action_pred = self.action_predictor(final_repr)
+
+    #     # Post-process action predictions
+    #     action_pred = action_pred.reshape(
+    #         (action_pred.shape[0], self.len_trajectory_pred, self.num_action_params)
+    #     )
+    #     action_pred[:, :, :2] = torch.cumsum(
+    #         action_pred[:, :, :2], dim=1
+    #     )  # Convert position deltas into waypoints
+    #     if self.learn_angle:
+    #         action_pred[:, :, 2:] = F.normalize(
+    #             action_pred[:, :, 2:].clone(), dim=-1
+    #         )  # Normalize the angle prediction
+
+    #     return dist_pred, action_pred

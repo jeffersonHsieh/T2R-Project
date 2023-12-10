@@ -72,10 +72,9 @@ class ViNT(BaseModel):
             nn.Linear(32, self.len_trajectory_pred * self.num_action_params),
         )
 
-    def forward(
-        self, obs_img: torch.tensor, goal_img: torch.tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
+    def forward(self, obs_img: torch.tensor, goal_img: torch.tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         
         # get the fused observation and goal encoding
         if self.late_fusion:
@@ -138,3 +137,6 @@ class ViNT(BaseModel):
                 action_pred[:, :, 2:].clone(), dim=-1
             )  # normalize the angle prediction
         return dist_pred, action_pred
+
+    
+
