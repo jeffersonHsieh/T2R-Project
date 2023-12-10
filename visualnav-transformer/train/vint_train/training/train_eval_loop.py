@@ -5,6 +5,7 @@ from typing import List, Optional, Dict
 from prettytable import PrettyTable
 
 from vint_train.training.train_utils import train, evaluate
+from vint_train.training.train_utils import train_langvint, evaluate_langvint
 from vint_train.training.train_utils import train_nomad, evaluate_nomad
 
 import torch
@@ -143,6 +144,86 @@ def train_eval_loop(
     # Flush the last set of eval logs
     wandb.log({})
     print()
+
+# langViNT train
+def train_eval_loop_langvint(
+    train_model: bool,
+    model: nn.Module,
+    optimizer: Adam,
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
+    dataloader: DataLoader,
+    test_dataloaders: Dict[str, DataLoader],
+    epochs: int,
+    device: torch.device,
+    project_folder: str,
+    print_log_freq: int = 100,
+    wandb_log_freq: int = 10,
+    num_images_log: int = 8,
+    current_epoch: int = 0,
+    alpha: float = 0.5,
+    learn_angle: bool = True,
+    use_wandb: bool = True,
+    eval_fraction: float = 0.25,
+):
+    latest_path = os.path.join(project_folder, "latest.pth")
+
+    for epoch in range(current_epoch, current_epoch + epochs):
+        if train_model:
+            print(f"Start LangViNT Training Epoch {epoch}/{current_epoch + epochs - 1}")
+            train_langvint(
+                model=model,
+                optimizer=optimizer,
+                dataloader=dataloader,
+                device=device,
+                epoch=epoch,
+                alpha=alpha,
+                learn_angle=learn_angle,
+                print_log_freq=print_log_freq,
+                wandb_log_freq=wandb_log_freq,
+                num_images_log=num_images_log,
+                use_wandb=use_wandb,
+            )
+
+        avg_total_test_loss = []
+        for dataset_type, loader in test_dataloaders.items():
+            print(f"Start {dataset_type} LangViNT Testing Epoch {epoch}/{current_epoch + epochs - 1}")
+            total_eval_loss = evaluate_langvint(
+                model=model,
+                dataloader=loader,
+                device=device,
+                epoch=epoch,
+                alpha=alpha,
+                learn_angle=learn_angle,
+                num_images_log=num_images_log,
+                use_wandb=use_wandb,
+                eval_fraction=eval_fraction,
+            )
+            avg_total_test_loss.append(total_eval_loss)
+
+        if scheduler is not None:
+            scheduler.step()
+
+        checkpoint = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+            "avg_total_test_loss": np.mean(avg_total_test_loss),
+        }
+
+        numbered_path = os.path.join(project_folder, f"{epoch}.pth")
+        torch.save(checkpoint, numbered_path)
+        torch.save(checkpoint, latest_path)
+
+        if use_wandb:
+            wandb.log({
+                "avg_total_test_loss": np.mean(avg_total_test_loss),
+                "lr": optimizer.param_groups[0]["lr"],
+            }, commit=False)
+
+    if use_wandb:
+        wandb.log({})  # Flush the last set of eval logs
+    print("Training complete.")
 
 def train_eval_loop_nomad(
     train_model: bool,

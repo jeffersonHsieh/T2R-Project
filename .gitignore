@@ -5,6 +5,7 @@
 *.pkl
 *.html
 *.gz
+*.txt
 *.tar
 *.tar.gz
 

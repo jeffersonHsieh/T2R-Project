@@ -76,120 +76,52 @@ class LangViNT(BaseModel):
         self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
-
-    def forward(
-        self, obs_img: torch.tensor, goal_img: torch.tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        
-        # get the fused observation and goal encoding
-        if self.late_fusion:
-            goal_encoding = self.goal_encoder.extract_features(goal_img)
-        else:
-            obsgoal_img = torch.cat([obs_img[:, 3*self.context_size:, :, :], goal_img], dim=1)
-            goal_encoding = self.goal_encoder.extract_features(obsgoal_img)
-        goal_encoding = self.goal_encoder._avg_pooling(goal_encoding)
-        if self.goal_encoder._global_params.include_top:
-            goal_encoding = goal_encoding.flatten(start_dim=1)
-            goal_encoding = self.goal_encoder._dropout(goal_encoding)
-        # currently, the size of goal_encoding is [batch_size, num_goal_features]
-        goal_encoding = self.compress_goal_enc(goal_encoding)
-        if len(goal_encoding.shape) == 2:
-            goal_encoding = goal_encoding.unsqueeze(1)
-        # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
-        assert goal_encoding.shape[2] == self.goal_encoding_size
-        
-        # split the observation into context based on the context size
-        # image size is [batch_size, 3*self.context_size, H, W]
+    def forward(self, obs_img: torch.Tensor, goal_text: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Process observation images with EfficientNet
+        # Split the observation into context based on the context size
         obs_img = torch.split(obs_img, 3, dim=1)
-
-        # image size is [batch_size*self.context_size, 3, H, W]
         obs_img = torch.concat(obs_img, dim=0)
 
-        # get the observation encoding
+        # Get the observation encoding
         obs_encoding = self.obs_encoder.extract_features(obs_img)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, H/32, W/32]
         obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, 1, 1]
         if self.obs_encoder._global_params.include_top:
             obs_encoding = obs_encoding.flatten(start_dim=1)
             obs_encoding = self.obs_encoder._dropout(obs_encoding)
-        # currently, the size is [batch_size, self.context_size+2, self.obs_encoding_size]
 
         obs_encoding = self.compress_obs_enc(obs_encoding)
-        # currently, the size is [batch_size*(self.context_size + 1), self.obs_encoding_size]
-        # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
         obs_encoding = obs_encoding.reshape((self.context_size+1, -1, self.obs_encoding_size))
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
-        # currently, the size is [batch_size, self.context_size+1, self.obs_encoding_size]
 
-        # concatenate the goal encoding to the observation encoding
+        # Encode the goal text using CLIP
+        goal_inputs = self.clip_processor(text=goal_text, return_tensors="pt", padding=True, truncation=True)
+        goal_inputs = {key: val.to(self.device) for key, val in goal_inputs.items()}  # Move inputs to the same device as the model
+        goal_encoding = self.clip_model.get_text_features(**goal_inputs)
+
+        # Ensure goal_encoding is in the correct shape
+        if len(goal_encoding.shape) == 2:
+            goal_encoding = goal_encoding.unsqueeze(1)
+
+        # Concatenate the goal encoding to the observation encoding
         tokens = torch.cat((obs_encoding, goal_encoding), dim=1)
-        final_repr = self.decoder(tokens)
-        # currently, the size is [batch_size, 32]
 
+        # Pass through the decoder
+        final_repr = self.decoder(tokens)
+
+        # Predict distance and actions
         dist_pred = self.dist_predictor(final_repr)
         action_pred = self.action_predictor(final_repr)
 
-        # augment outputs to match labels size-wise
+        # Post-process action predictions
         action_pred = action_pred.reshape(
             (action_pred.shape[0], self.len_trajectory_pred, self.num_action_params)
         )
         action_pred[:, :, :2] = torch.cumsum(
             action_pred[:, :, :2], dim=1
-        )  # convert position deltas into waypoints
+        )  # Convert position deltas into waypoints
         if self.learn_angle:
             action_pred[:, :, 2:] = F.normalize(
                 action_pred[:, :, 2:].clone(), dim=-1
-            )  # normalize the angle prediction
+            )  # Normalize the angle prediction
+
         return dist_pred, action_pred
-    
-    # def forward(self, obs_img: torch.Tensor, goal_text: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
-    #     # Process observation images with EfficientNet
-    #     # Split the observation into context based on the context size
-    #     obs_img = torch.split(obs_img, 3, dim=1)
-    #     obs_img = torch.concat(obs_img, dim=0)
-
-    #     # Get the observation encoding
-    #     obs_encoding = self.obs_encoder.extract_features(obs_img)
-    #     obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
-    #     if self.obs_encoder._global_params.include_top:
-    #         obs_encoding = obs_encoding.flatten(start_dim=1)
-    #         obs_encoding = self.obs_encoder._dropout(obs_encoding)
-
-    #     obs_encoding = self.compress_obs_enc(obs_encoding)
-    #     obs_encoding = obs_encoding.reshape((self.context_size+1, -1, self.obs_encoding_size))
-    #     obs_encoding = torch.transpose(obs_encoding, 0, 1)
-
-    #     # Encode the goal text using CLIP
-    #     goal_inputs = self.clip_processor(text=goal_text, return_tensors="pt", padding=True, truncation=True)
-    #     goal_inputs = {key: val.to(self.device) for key, val in goal_inputs.items()}  # Move inputs to the same device as the model
-    #     goal_encoding = self.clip_model.get_text_features(**goal_inputs)
-
-    #     # Ensure goal_encoding is in the correct shape
-    #     if len(goal_encoding.shape) == 2:
-    #         goal_encoding = goal_encoding.unsqueeze(1)
-
-    #     # Concatenate the goal encoding to the observation encoding
-    #     tokens = torch.cat((obs_encoding, goal_encoding), dim=1)
-
-    #     # Pass through the decoder
-    #     final_repr = self.decoder(tokens)
-
-    #     # Predict distance and actions
-    #     dist_pred = self.dist_predictor(final_repr)
-    #     action_pred = self.action_predictor(final_repr)
-
-    #     # Post-process action predictions
-    #     action_pred = action_pred.reshape(
-    #         (action_pred.shape[0], self.len_trajectory_pred, self.num_action_params)
-    #     )
-    #     action_pred[:, :, :2] = torch.cumsum(
-    #         action_pred[:, :, :2], dim=1
-    #     )  # Convert position deltas into waypoints
-    #     if self.learn_angle:
-    #         action_pred[:, :, 2:] = F.normalize(
-    #             action_pred[:, :, 2:].clone(), dim=-1
-    #         )  # Normalize the angle prediction
-
-    #     return dist_pred, action_pred

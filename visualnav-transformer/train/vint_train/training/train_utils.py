@@ -441,6 +441,54 @@ def evaluate(
 
     return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
 
+def train_langvint(model, optimizer, dataloader, device, epoch, alpha, learn_angle, print_log_freq, wandb_log_freq, num_images_log, use_wandb):
+    model.train()
+    for i, data in enumerate(dataloader):
+        obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+        optimizer.zero_grad()
+
+        distance_pred, action_pred = model(obs_images, goal_text)
+
+        # Assuming the distance and action losses are calculated similarly to ViNT
+        distance_loss = F.mse_loss(distance_pred.squeeze(), distances)
+        action_loss = F.mse_loss(action_pred, actions)
+
+        loss = alpha * distance_loss + (1 - alpha) * action_loss
+
+        loss.backward()
+        optimizer.step()
+
+        if i % print_log_freq == 0:
+            print(f"Epoch {epoch}, Step {i}, Loss: {loss.item()}")
+
+        if use_wandb and i % wandb_log_freq == 0:
+            wandb.log({"train_loss": loss.item(), "step": epoch * len(dataloader) + i})
+    
+    print(f"Training Epoch {epoch} completed.")
+
+def evaluate_langvint(model, dataloader, device, epoch, alpha, learn_angle, num_images_log, use_wandb, eval_fraction):
+    model.eval()
+    total_eval_loss = 0
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+            
+            distance_pred, action_pred = model(obs_images, goal_text)
+
+            distance_loss = F.mse_loss(distance_pred.squeeze(), distances)
+            action_loss = F.mse_loss(action_pred, actions)
+
+            loss = alpha * distance_loss + (1 - alpha) * action_loss
+
+            total_eval_loss += loss.item()
+
+            if use_wandb and i % num_images_log == 0:
+                wandb.log({"eval_loss": loss.item(), "step": epoch * len(dataloader) + i})
+
+    avg_eval_loss = total_eval_loss / len(dataloader)
+    print(f"Evaluation completed. Average Loss: {avg_eval_loss}")
+    return avg_eval_loss
+
 
 # Train utils for NOMAD
 
