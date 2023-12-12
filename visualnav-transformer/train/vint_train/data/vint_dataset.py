@@ -402,42 +402,53 @@ class ViNT_Dataset(Dataset):
                 self.waypoint_spacing
             )
         ]
-        obs_image = torch.stack(context_images)  # Stack images to create a tensor
+        obs_image = torch.cat(context_images)  # Stack images to create a tensor
 
         # Load goal data based on goal_input_type
         if self.goal_input_type == "image":
             goal_data = self._load_image(f_goal, goal_time)
         elif self.goal_input_type == "text":
+            # TODO: use CLIP PROCESSOR!
             goal_data = self._load_text(f_goal, goal_time)
         else:
             raise ValueError(f"Invalid goal input type {self.goal_input_type}")
 
         # Load other trajectory data
         curr_traj_data = self._get_trajectory(f_curr)
+        curr_traj_len = len(curr_traj_data["position"])
+        assert curr_time < curr_traj_len, f"{curr_time} and {curr_traj_len}"
+
         goal_traj_data = self._get_trajectory(f_goal)
+        goal_traj_len = len(goal_traj_data["position"])
+        assert goal_time < goal_traj_len, f"{goal_time} an {goal_traj_len}"
 
-        # Compute actions and distances
+        # Compute actions
         actions, goal_pos = self._compute_actions(curr_traj_data, curr_time, goal_time)
-        distance = (goal_time - curr_time) // self.waypoint_spacing if not goal_is_negative else self.max_dist_cat
-
+        
+        # Compute distances
+        if goal_is_negative:
+            distance = self.max_dist_cat
+        else:
+            distance = (goal_time - curr_time) // self.waypoint_spacing
+            assert (goal_time - curr_time) % self.waypoint_spacing == 0, f"{goal_time} and {curr_time} should be separated by an integer multiple of {self.waypoint_spacing}"
+        
         actions_torch = torch.as_tensor(actions, dtype=torch.float32)
-        distance_torch = torch.as_tensor(distance, dtype=torch.int64)
-        goal_pos_torch = torch.as_tensor(goal_pos, dtype=torch.float32)
-
+        if self.learn_angle:
+            actions_torch = calculate_sin_cos(actions_torch)
+        
         action_mask = (
             (distance < self.max_action_distance) and
             (distance > self.min_action_distance) and
             (not goal_is_negative)
         )
-        action_mask_torch = torch.as_tensor(action_mask, dtype=torch.float32)
 
         # Package the observation, goal data, actions, and other information
         return (
-            obs_image,
-            goal_data,  # This will be either a tensor or text depending on goal_input_type
+            torch.as_tensor(obs_image, dtype=torch.float32),
+            torch.as_tensor(goal_data, dtype=torch.float32),  
             actions_torch,
-            distance_torch,
-            goal_pos_torch,
+            torch.as_tensor(distance, dtype=torch.int64),
+            torch.as_tensor(goal_pos, dtype=torch.float32),
             torch.as_tensor(self.dataset_index, dtype=torch.int64),
-            action_mask_torch,
+            torch.as_tensor(action_mask, dtype=torch.float32),
         )

@@ -33,6 +33,7 @@ from vint_train.data.vint_dataset import ViNT_Dataset
 from vint_train.training.train_eval_loop import (
     train_eval_loop,
     train_eval_loop_nomad,
+    # train_eval_loop_langvint,
     load_model,
 )
 
@@ -114,7 +115,6 @@ def main(config):
                         end_slack=data_config["end_slack"],
                         goals_per_obs=data_config["goals_per_obs"],
                         normalize=config["normalize"],
-                        # goal_type=config["goal_type"],
                         ###TEXT DATA INPUT
                         goal_type=config["goal_type"],
                         goal_input_type=goal_input_type,
@@ -137,6 +137,7 @@ def main(config):
         num_workers=config["num_workers"],
         drop_last=False,
         persistent_workers=True,
+        # persistent_workers=False
     )
 
     if "eval_batch_size" not in config:
