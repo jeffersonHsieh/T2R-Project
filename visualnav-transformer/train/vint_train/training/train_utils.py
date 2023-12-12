@@ -441,54 +441,233 @@ def evaluate(
 
     return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
 
-def train_langvint(model, optimizer, dataloader, device, epoch, alpha, learn_angle, print_log_freq, wandb_log_freq, num_images_log, use_wandb):
+def train_langvint(
+    model: nn.Module,
+    optimizer: Adam,
+    dataloader: DataLoader,
+    transform: transforms,
+    device: torch.device,
+    project_folder: str,
+    normalized: bool,
+    epoch: int,
+    alpha: float = 0.5,
+    learn_angle: bool = True,
+    print_log_freq: int = 100,
+    wandb_log_freq: int = 10,
+    image_log_freq: int = 1000,
+    num_images_log: int = 8,
+    use_wandb: bool = True,
+    use_tqdm: bool = True,
+):
     model.train()
-    for i, data in enumerate(dataloader):
+    dist_loss_logger = Logger("dist_loss", "train", window_size=print_log_freq)
+    action_loss_logger = Logger("action_loss", "train", window_size=print_log_freq)
+    action_waypts_cos_sim_logger = Logger(
+        "action_waypts_cos_sim", "train", window_size=print_log_freq
+    )
+    multi_action_waypts_cos_sim_logger = Logger(
+        "multi_action_waypts_cos_sim", "train", window_size=print_log_freq
+    )
+    total_loss_logger = Logger("total_loss", "train", window_size=print_log_freq)
+    loggers = {
+        "dist_loss": dist_loss_logger,
+        "action_loss": action_loss_logger,
+        "action_waypts_cos_sim": action_waypts_cos_sim_logger,
+        "multi_action_waypts_cos_sim": multi_action_waypts_cos_sim_logger,
+        "total_loss": total_loss_logger,
+    }
+    if learn_angle:
+        action_orien_cos_sim_logger = Logger(
+            "action_orien_cos_sim", "train", window_size=print_log_freq
+        )
+        multi_action_orien_cos_sim_logger = Logger(
+            "multi_action_orien_cos_sim", "train", window_size=print_log_freq
+        )
+        loggers["action_orien_cos_sim"] = action_orien_cos_sim_logger
+        loggers["multi_action_orien_cos_sim"] = multi_action_orien_cos_sim_logger
+
+    num_batches = len(dataloader)
+    tqdm_iter = tqdm.tqdm(
+        dataloader,
+        disable=not use_tqdm,
+        dynamic_ncols=True,
+        desc=f"Training epoch {epoch}",
+    )
+    for i, data in enumerate(tqdm_iter):
         # TODO
-        obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+        (
+            obs_image,
+            goal_text,
+            action_label,
+            dist_label,
+            goal_pos,
+            dataset_index,
+            action_mask,
+            text_attn_mask
+        ) = data
+        # obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+        obs_images = torch.split(obs_image, 3, dim=1)
+        viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
+        obs_images = [transform(obs_image).to(device) for obs_image in obs_images]
+        obs_image = torch.cat(obs_images, dim=1)
+
+        goal_text = goal_text.to(device)
+        text_attn_mask = text_attn_mask.to(device)
+
+        model_outputs = model(obs_image,goal_text,text_attn_mask)
+
+        dist_label = dist_label.to(device)
+        action_label = action_label.to(device)
+        action_mask = action_mask.to(device)
+        
         optimizer.zero_grad()
 
-        distance_pred, action_pred = model(obs_images, goal_text)
+        dist_pred, action_pred = model_outputs
 
         # Assuming the distance and action losses are calculated similarly to ViNT
-        distance_loss = F.mse_loss(distance_pred.squeeze(), distances)
-        action_loss = F.mse_loss(action_pred, actions)
-
-        loss = alpha * distance_loss + (1 - alpha) * action_loss
-
-        loss.backward()
+        losses = _compute_losses(
+            dist_label=dist_label,
+            action_label=action_label,
+            dist_pred=dist_pred,
+            action_pred=action_pred,
+            alpha=alpha,
+            learn_angle=learn_angle,
+            action_mask=action_mask,
+        )
+        losses['total_loss'].backward()
         optimizer.step()
 
+        for key, value in losses.items():
+            if key in loggers:
+                logger = loggers[key]
+                logger.log_data(value.item())
         if i % print_log_freq == 0:
-            print(f"Epoch {epoch}, Step {i}, Loss: {loss.item()}")
+            print(f"Epoch {epoch}, Step {i}, Loss: {losses['total_loss'].item()}")
 
         if use_wandb and i % wandb_log_freq == 0:
-            wandb.log({"train_loss": loss.item(), "step": epoch * len(dataloader) + i})
+            wandb.log({"train_loss": losses.item(), "step": epoch * len(dataloader) + i})
     
-    print(f"Training Epoch {epoch} completed.")
 
-def evaluate_langvint(model, dataloader, device, epoch, alpha, learn_angle, num_images_log, use_wandb, eval_fraction):
+        # _log_data(
+        #     i=i,
+        #     epoch=epoch,
+        #     num_batches=num_batches,
+        #     normalized=normalized,
+        #     project_folder=project_folder,
+        #     num_images_log=num_images_log,
+        #     loggers=loggers,
+        #     obs_image=viz_obs_image,
+        #     goal_image=viz_goal_image,
+        #     action_pred=action_pred,
+        #     action_label=action_label,
+        #     dist_pred=dist_pred,
+        #     dist_label=dist_label,
+        #     goal_pos=goal_pos,
+        #     dataset_index=dataset_index,
+        #     wandb_log_freq=wandb_log_freq,
+        #     print_log_freq=print_log_freq,
+        #     image_log_freq=image_log_freq,
+        #     use_wandb=use_wandb,
+        #     mode="train",
+        #     use_latest=True,
+        # )
+def evaluate_langvint(
+        eval_type: str,
+        model: nn.Module,
+        dataloader: DataLoader,
+        transform: transforms,
+        device: torch.device,
+        project_folder: str,
+        normalized: bool,
+        epoch: int = 0,
+        alpha: float = 0.5,
+        learn_angle: bool = True,
+        num_images_log: int = 8,
+        use_wandb: bool = True,
+        eval_fraction: float = 1.0,
+        use_tqdm: bool = True,
+):
     model.eval()
+    dist_loss_logger = Logger("dist_loss", eval_type)
+    action_loss_logger = Logger("action_loss", eval_type)
+    action_waypts_cos_sim_logger = Logger("action_waypts_cos_sim", eval_type)
+    multi_action_waypts_cos_sim_logger = Logger("multi_action_waypts_cos_sim", eval_type)
+    total_loss_logger = Logger("total_loss", eval_type)
+    loggers = {
+        "dist_loss": dist_loss_logger,
+        "action_loss": action_loss_logger,
+        "action_waypts_cos_sim": action_waypts_cos_sim_logger,
+        "multi_action_waypts_cos_sim": multi_action_waypts_cos_sim_logger,
+        "total_loss": total_loss_logger,
+    }
+    if learn_angle:
+        action_orien_cos_sim_logger = Logger("action_orien_cos_sim", eval_type)
+        multi_action_orien_cos_sim_logger = Logger("multi_action_orien_cos_sim", eval_type)
+        loggers["action_orien_cos_sim"] = action_orien_cos_sim_logger
+        loggers["multi_action_orien_cos_sim"] = multi_action_orien_cos_sim_logger
+
+    num_batches = len(dataloader)
+    num_batches = max(int(num_batches * eval_fraction), 1)
+    viz_obs_image = None
+
     total_eval_loss = 0
     with torch.no_grad():
-        for i, data in enumerate(dataloader):
-            obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+        tqdm_iter = tqdm.tqdm(
+            itertools.islice(dataloader, num_batches),
+            total=num_batches,
+            disable=not use_tqdm,
+            dynamic_ncols=True,
+            desc=f"Evaluating {eval_type} for epoch {epoch}",
+        )
+
+        for i, data in enumerate(tqdm_iter):
+            (
+                obs_image,
+                goal_text,
+                action_label,
+                dist_label,
+                goal_pos,
+                dataset_index,
+                action_mask,
+                text_attn_mask
+            ) = data
+
+            obs_images = torch.split(obs_image, 3, dim=1)
+            viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
+            obs_images = [transform(obs_image).to(device) for obs_image in obs_images]
+            obs_image = torch.cat(obs_images, dim=1)
             
-            distance_pred, action_pred = model(obs_images, goal_text)
+            goal_text = goal_text.to(device)
+            text_attn_mask = text_attn_mask.to(device)
+            
+            model_outputs = model(obs_image,goal_text,text_attn_mask)
+            dist_label = dist_label.to(device)
+            action_label = action_label.to(device)
+            action_mask = action_mask.to(device)
 
-            distance_loss = F.mse_loss(distance_pred.squeeze(), distances)
-            action_loss = F.mse_loss(action_pred, actions)
+            dist_pred, action_pred = model_outputs
+            # distance_loss = F.mse_loss(dist_pred.squeeze(), dist_label)
+            # action_loss = F.mse_loss(action_pred, action_label)
 
-            loss = alpha * distance_loss + (1 - alpha) * action_loss
+            # loss = alpha * distance_loss + (1 - alpha) * action_loss
+            losses = _compute_losses(
+                dist_label=dist_label,
+                action_label=action_label,
+                dist_pred=dist_pred,
+                action_pred=action_pred,
+                alpha=alpha,
+                learn_angle=learn_angle,
+                action_mask=action_mask,
+            )
 
-            total_eval_loss += loss.item()
+            total_eval_loss += losses['total_loss'].item()
 
             if use_wandb and i % num_images_log == 0:
-                wandb.log({"eval_loss": loss.item(), "step": epoch * len(dataloader) + i})
+                wandb.log({"eval_loss": losses['total_loss'].item(), "step": epoch * len(dataloader) + i})
 
     avg_eval_loss = total_eval_loss / len(dataloader)
     print(f"Evaluation completed. Average Loss: {avg_eval_loss}")
-    return avg_eval_loss
+    return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
 
 
 # Train utils for NOMAD
