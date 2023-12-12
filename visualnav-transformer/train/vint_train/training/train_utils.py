@@ -200,6 +200,7 @@ def train(
         use_wandb: whether to use wandb
         use_tqdm: whether to use tqdm
     """
+    # TODO: refer to here for moving to device
     model.train()
     dist_loss_logger = Logger("dist_loss", "train", window_size=print_log_freq)
     action_loss_logger = Logger("action_loss", "train", window_size=print_log_freq)
@@ -443,6 +444,7 @@ def evaluate(
 def train_langvint(model, optimizer, dataloader, device, epoch, alpha, learn_angle, print_log_freq, wandb_log_freq, num_images_log, use_wandb):
     model.train()
     for i, data in enumerate(dataloader):
+        # TODO
         obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
         optimizer.zero_grad()
 

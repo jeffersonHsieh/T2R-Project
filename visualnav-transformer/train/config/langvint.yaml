@@ -61,12 +61,18 @@ goal_input_type: "text"  # Indicate that the goal input will be text
 
 
 datasets:
-  recon:
-    data_folder: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/bags_airsim
-    train: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/train # path to train folder with traj_names.txt
-    test: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/test # path to test folder with traj_names.txt
-    # text_data_folder: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/bags_airsim  # Path to text data
-    end_slack: 3 # because many trajectories end in collisions
+  airsim_explore_text:
+    data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_explore_text
+    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/train # path to train folder with traj_names.txt
+    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/test # path to test folder with traj_names.txt
+    end_slack: 0 # because many trajectories end in collisions
+    goals_per_obs: 1 # how many goals are sampled per observation
+    negative_mining: True # negative mining from the ViNG paper (Shah et al.)
+  airsim_test_text:
+    data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_test_text
+    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/train # path to train folder with traj_names.txt
+    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/test # path to test folder with traj_names.txt
+    end_slack: 0 # because many trajectories end in collisions
     goals_per_obs: 1 # how many goals are sampled per observation
     negative_mining: True # negative mining from the ViNG paper (Shah et al.)
   # go_stanford:

@@ -63,4 +63,11 @@ sacson:
 airsim_explore:
   metric_waypoint_spacing: 0.2335
 
+airsim_explore_text:
+  metric_waypoint_spacing: 0.2335
+
+airsim_test_text:
+# temp
+  metric_waypoint_spacing: 0.2335
+
 # add your own dataset params here:

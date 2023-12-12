@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Tuple
 from efficientnet_pytorch import EfficientNet
 from vint_train.models.base_model import BaseModel
 from vint_train.models.langvint.self_attention import MultiLayerDecoder
-from transformers import CLIPProcessor, CLIPModel
+from transformers import CLIPModel
 
 class LangViNT(BaseModel):
     def __init__(
@@ -38,6 +38,7 @@ class LangViNT(BaseModel):
 
         self.late_fusion = late_fusion
         # TODO: MULTIMODAL FUSION ENCODER!
+        # TODO: Should we use CLIP-ViT as Observation encoder as well?
         if obs_encoder.split("-")[0] == "efficientnet":
             self.obs_encoder = EfficientNet.from_name(obs_encoder, in_channels=3) # context
             self.num_obs_features = self.obs_encoder._fc.in_features
@@ -74,9 +75,8 @@ class LangViNT(BaseModel):
             nn.Linear(32, self.len_trajectory_pred * self.num_action_params),
         )
         self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
-    def forward(self, obs_img: torch.Tensor, goal_text: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, obs_img: torch.Tensor, goal_text_input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Process observation images with EfficientNet
         # Split the observation into context based on the context size
         obs_img = torch.split(obs_img, 3, dim=1)
@@ -94,9 +94,7 @@ class LangViNT(BaseModel):
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
 
         # Encode the goal text using CLIP
-        goal_inputs = self.clip_processor(text=goal_text, return_tensors="pt", padding=True, truncation=True)
-        goal_inputs = {key: val.to(self.device) for key, val in goal_inputs.items()}  # Move inputs to the same device as the model
-        goal_encoding = self.clip_model.get_text_features(**goal_inputs)
+        goal_encoding = self.clip_model.get_text_features(**goal_text_input)
 
         # Ensure goal_encoding is in the correct shape
         if len(goal_encoding.shape) == 2:
@@ -124,4 +122,6 @@ class LangViNT(BaseModel):
                 action_pred[:, :, 2:].clone(), dim=-1
             )  # Normalize the angle prediction
 
+        # TODO: also return CLIP text projection pooled vector for regularization/alignment. should freeze CLIPTextEncoder and only unfreeze projection layer
+        # TODO: finer grained alignment, maybe use GroundingDINO like object detectors for position+object alignment (both info available in generated caption)
         return dist_pred, action_pred
