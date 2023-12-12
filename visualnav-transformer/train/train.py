@@ -37,7 +37,7 @@ from vint_train.data.vint_dataset import ViNT_Dataset
 from vint_train.training.train_eval_loop import (
     train_eval_loop,
     train_eval_loop_nomad,
-    # train_eval_loop_langvint,
+    train_eval_loop_langvint,
     load_model,
 )
 
@@ -357,8 +357,30 @@ def main(config):
         if scheduler is not None:
             scheduler.load_state_dict(latest_checkpoint["scheduler"].state_dict())
 
-    if config["model_type"] == "vint" or config["model_type"] == "langvint" or config["model_type"] == "gnm": 
+    if config["model_type"] == "vint" or config["model_type"] == "gnm": 
         train_eval_loop(
+            train_model=config["train"],
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            dataloader=train_loader,
+            test_dataloaders=test_dataloaders,
+            transform=transform,
+            epochs=config["epochs"],
+            device=device,
+            project_folder=config["project_folder"],
+            normalized=config["normalize"],
+            print_log_freq=config["print_log_freq"],
+            image_log_freq=config["image_log_freq"],
+            num_images_log=config["num_images_log"],
+            current_epoch=current_epoch,
+            learn_angle=config["learn_angle"],
+            alpha=config["alpha"],
+            use_wandb=config["use_wandb"],
+            eval_fraction=config["eval_fraction"],
+        )
+    elif config["model_type"] == "langvint":
+        train_eval_loop_langvint(
             train_model=config["train"],
             model=model,
             optimizer=optimizer,

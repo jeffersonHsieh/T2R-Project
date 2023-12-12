@@ -76,7 +76,7 @@ class LangViNT(BaseModel):
         )
         self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 
-    def forward(self, obs_img: torch.Tensor, goal_text_input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, obs_img: torch.Tensor, goal_text_input: torch.Tensor,goal_text_attn_mask:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Process observation images with EfficientNet
         # Split the observation into context based on the context size
         obs_img = torch.split(obs_img, 3, dim=1)
@@ -94,7 +94,10 @@ class LangViNT(BaseModel):
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
 
         # Encode the goal text using CLIP
-        goal_encoding = self.clip_model.get_text_features(**goal_text_input)
+        goal_encoding = self.clip_model.get_text_features(
+            input_ids=goal_text_input,
+            attention_mask=goal_text_attn_mask
+            )
 
         # Ensure goal_encoding is in the correct shape
         if len(goal_encoding.shape) == 2:
