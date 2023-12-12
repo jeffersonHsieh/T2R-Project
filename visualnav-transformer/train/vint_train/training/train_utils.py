@@ -245,7 +245,6 @@ def train(
             dataset_index,
             action_mask,
         ) = data
-
         obs_images = torch.split(obs_image, 3, dim=1)
         viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
         obs_images = [transform(obs_image).to(device) for obs_image in obs_images]

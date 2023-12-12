@@ -60,4 +60,7 @@ carla:
 sacson:
   metric_waypoint_spacing: 0.255
 
+airsim_explore:
+  metric_waypoint_spacing: 0.2335
+
 # add your own dataset params here:
