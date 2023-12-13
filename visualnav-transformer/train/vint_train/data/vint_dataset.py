@@ -236,11 +236,12 @@ class ViNT_Dataset(Dataset):
 
 
     def _load_text(self, trajectory_name, time):
-        # assumes the structure dataset_folder/traj_name/captions/ ...
-        text_file_path = os.path.join(self.data_folder, trajectory_name, "captions" ,f"{time}.txt")
-        with open(text_file_path, 'r') as file:
-            text_data = file.read()
-        
+        traj_data = self._get_trajectory(trajectory_name)
+        # offset 1 because goal descriptions are labeled by their time step
+        # so if you are at time step 0, you want the description for time step 1 as goal description
+        time = self.find_ceiling_time_step(time+1, traj_data["text_time_steps"])
+        text_data = traj_data["captions"][time]
+
         return text_data
 
     def _load_image(self, trajectory_name, time):
@@ -295,13 +296,48 @@ class ViNT_Dataset(Dataset):
     def _get_data_type(self):
         return torch.float32 if self.goal_input_type == "image" else torch.int64
 
-    
+    def find_ceiling_time_step(self,query_time_step, time_steps):
+        """
+        Find the ceiling time step for a given query time step using binary search.
+        :param query_time_step: The time step to query.
+        :param time_steps: Sorted list of available time steps.
+        :return: The ceiling time step.
+        """
+        left, right = 0, len(time_steps) - 1
+        ceil = None
+        if query_time_step > time_steps[-1]:
+            return time_steps[-1]
+        while left <= right:
+            mid = left + (right - left) // 2
+            if time_steps[mid] == query_time_step:
+                return time_steps[mid]
+            elif time_steps[mid] < query_time_step:
+                left = mid + 1
+            else:
+                ceil = time_steps[mid]
+                right = mid - 1
+
+        return ceil
+
     def _get_trajectory(self, trajectory_name):
+        # assumes the structure dataset_folder/traj_name/captions/ ...
         if trajectory_name in self.trajectory_cache:
             return self.trajectory_cache[trajectory_name]
         else:
             with open(os.path.join(self.data_folder, trajectory_name, "traj_data.pkl"), "rb") as f:
                 traj_data = pickle.load(f)
+            captions_dir=os.path.join(self.data_folder, trajectory_name, "captions")
+            traj_data["captions"] = {}
+            for cap in os.listdir(captions_dir):
+                if cap.endswith(".txt"):
+                    with open(os.path.join(captions_dir, cap), "r") as f:
+                        # extract the time step from the file name
+                        try:
+                            time_step = int(cap.split(".")[0])
+                        except ValueError:
+                            continue
+                        traj_data["captions"][time_step] = f.read()
+                traj_data["text_time_steps"] = sorted(list(traj_data["captions"].keys()))
             self.trajectory_cache[trajectory_name] = traj_data
             return traj_data
 

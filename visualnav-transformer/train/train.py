@@ -41,6 +41,37 @@ from vint_train.training.train_eval_loop import (
     load_model,
 )
 
+global_processor = None
+
+def worker_init_fn(worker_id):
+    global global_processor
+    # Initialize the processor for each worker
+    global_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+
+
+def text_goal_collate_fn(batch):
+    # Unzip the batch into separate lists
+    global global_processor
+    # Ensure the processor is available
+    assert global_processor is not None, "Processor not initialized"
+    obs_images, goal_datas, actions, distances, goal_poses, dataset_indices, action_masks = zip(*batch)
+
+    # Process the tensor data
+    obs_images = torch.stack(obs_images)
+    actions = torch.stack(actions)
+    distances = torch.stack(distances)
+    goal_poses = torch.stack(goal_poses)
+    dataset_indices = torch.stack(dataset_indices)
+    action_masks = torch.stack(action_masks)
+
+    # Process the text data with the CLIP processor
+    processed_texts = global_processor(text=list(goal_datas), return_tensors="pt", padding=True, truncation=True)
+    input_ids = processed_texts.input_ids
+    attention_masks = processed_texts.attention_mask
+
+    return obs_images, input_ids, actions, distances, goal_poses, dataset_indices, action_masks, attention_masks
+
+
 
 def main(config):
     assert config["distance"]["min_dist_cat"] < config["distance"]["max_dist_cat"]
@@ -98,7 +129,7 @@ def main(config):
         for data_split_type in ["train", "test"]:
             data_config = config["datasets"][dataset_name]
             # Determine goal input type based on config
-            goal_input_type = data_config.get("goal_input_type", "image")
+            goal_input_type = config.get("goal_input_type", "image")
 
             if data_split_type in data_config:
                     dataset = ViNT_Dataset(
@@ -136,34 +167,13 @@ def main(config):
     # Assign the default collate function to a variable
     collate_func = default_collate
 
-    def create_collate_fn(processor):
-        def text_goal_collate_fn(batch):
-            # Unzip the batch into separate lists
-            obs_images, goal_datas, actions, distances, goal_poses, dataset_indices, action_masks = zip(*batch)
 
-            # Process the tensor data
-            obs_images = torch.stack(obs_images)
-            actions = torch.stack(actions)
-            distances = torch.stack(distances)
-            goal_poses = torch.stack(goal_poses)
-            dataset_indices = torch.stack(dataset_indices)
-            action_masks = torch.stack(action_masks)
-
-            # Process the text data with the CLIP processor
-            processed_texts = processor(text=list(goal_datas), return_tensors="pt", padding=True, truncation=True)
-            input_ids = processed_texts.input_ids
-            attention_masks = processed_texts.attention_mask
-
-            return obs_images, input_ids, actions, distances, goal_poses, dataset_indices, action_masks, attention_masks
-
-
-        return text_goal_collate_fn
-    
+    global global_processor
+    worker_init_func=None
     if config['goal_input_type']=='text':
-        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-        text_goal_collate_func = create_collate_fn(processor)
-        collate_func=text_goal_collate_func
-
+        global_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        collate_func=text_goal_collate_fn
+        worker_init_func=worker_init_fn
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -172,15 +182,18 @@ def main(config):
         drop_last=False,
         persistent_workers=True,
         # persistent_workers=False,
-        collate_fn=collate_func
+        collate_fn=collate_func,
+        worker_init_fn=worker_init_func,
     )
 
     if "eval_batch_size" not in config:
         config["eval_batch_size"] = config["batch_size"]
 
     test_collate_func=default_collate
+    test_worker_init_func=None
     if config['goal_input_type']=='text':
-        test_collate_func=create_collate_fn(processor)
+        test_collate_func=text_goal_collate_fn
+        test_worker_init_func=worker_init_fn
     for dataset_type, dataset in test_dataloaders.items():
         test_dataloaders[dataset_type] = DataLoader(
             dataset,
@@ -188,7 +201,8 @@ def main(config):
             shuffle=True,
             num_workers=0,
             drop_last=False,
-            collate_fn=test_collate_func
+            collate_fn=test_collate_func,
+            worker_init_fn=test_worker_init_func,
         )
 
     # Create the model
@@ -344,7 +358,7 @@ def main(config):
         print("Loading model from ", load_project_folder)
         latest_path = os.path.join(load_project_folder, "latest.pth")
         latest_checkpoint = torch.load(latest_path) #f"cuda:{}" if torch.cuda.is_available() else "cpu")
-        load_model(model, latest_checkpoint)
+        load_model(model, latest_checkpoint,lang=config["model_type"]=="langvint")
         current_epoch = latest_checkpoint["epoch"] + 1
 
     # Multi-GPU
@@ -353,7 +367,22 @@ def main(config):
     model = model.to(device)
 
     if "load_run" in config:  # load optimizer and scheduler after data parallel
-        optimizer.load_state_dict(latest_checkpoint["optimizer"].state_dict())
+        try:
+            optimizer.load_state_dict(latest_checkpoint["optimizer"].state_dict())
+        except ValueError:
+            # Load the state dict
+            saved_state_dict = latest_checkpoint['optimizer'].state_dict()
+
+            # Loop through each parameter group (to support optimizers with multiple groups)
+            for group_index, param_group in enumerate(optimizer.param_groups):
+                saved_group = saved_state_dict['param_groups'][group_index]
+
+                # Load only hyperparameters that exist in both the saved state and the current optimizer
+                for key in saved_group:
+                    if key != 'params':  # Exclude the 'params' key as it refers to model parameters
+                        if key in param_group:
+                            param_group[key]=saved_group[key]
+        # import pdb;pdb.set_trace()
         if scheduler is not None:
             scheduler.load_state_dict(latest_checkpoint["scheduler"].state_dict())
 
