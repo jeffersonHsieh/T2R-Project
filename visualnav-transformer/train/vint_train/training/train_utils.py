@@ -117,7 +117,7 @@ def _log_data(
     print_log_freq=1,
     image_log_freq=1,
     wandb_increment_step=True,
-):
+    ):
     """
     Log data to wandb and print to console.
     """
@@ -163,6 +163,77 @@ def _log_data(
         )
 
 
+
+def _log_langvint_data(
+    i,
+    epoch,
+    num_batches,
+    normalized,
+    project_folder,
+    num_images_log,
+    loggers,
+    obs_image,
+    goal_text,
+    action_pred,
+    action_label,
+    dist_pred,
+    dist_label,
+    goal_pos,
+    dataset_index,
+    use_wandb,
+    mode,
+    use_latest,
+    wandb_log_freq=1,
+    print_log_freq=1,
+    image_log_freq=1,
+    wandb_increment_step=True,
+    ):
+    """
+    Log data to wandb and print to console.
+    """
+    data_log = {}
+    for key, logger in loggers.items():
+        if use_latest:
+            data_log[logger.full_name()] = logger.latest()
+            if i % print_log_freq == 0 and print_log_freq != 0:
+                print(f"(epoch {epoch}) (batch {i}/{num_batches - 1}) {logger.display()}")
+        else:
+            data_log[logger.full_name()] = logger.average()
+            if i % print_log_freq == 0 and print_log_freq != 0:
+                print(f"(epoch {epoch}) {logger.full_name()} {logger.average()}")
+
+    if use_wandb and i % wandb_log_freq == 0 and wandb_log_freq != 0:
+        wandb.log(data_log, commit=wandb_increment_step)
+
+    # if image_log_freq != 0 and i % image_log_freq == 0:
+    #     visualize_dist_pred(
+    #         to_numpy(obs_image),
+    #         to_numpy(goal_image),
+    #         to_numpy(dist_pred),
+    #         to_numpy(dist_label),
+    #         mode,
+    #         project_folder,
+    #         epoch,
+    #         num_images_log,
+    #         use_wandb=use_wandb,
+    #     )
+    #     visualize_traj_pred(
+    #         to_numpy(obs_image),
+    #         to_numpy(goal_image),
+    #         to_numpy(dataset_index),
+    #         to_numpy(goal_pos),
+    #         to_numpy(action_pred),
+    #         to_numpy(action_label),
+    #         mode,
+    #         normalized,
+    #         project_folder,
+    #         epoch,
+    #         num_images_log,
+    #         use_wandb=use_wandb,
+    #     )
+
+
+
 def train(
     model: nn.Module,
     optimizer: Adam,
@@ -180,7 +251,7 @@ def train(
     num_images_log: int = 8,
     use_wandb: bool = True,
     use_tqdm: bool = True,
-):
+    ):
     """
     Train the model for one epoch.
 
@@ -322,8 +393,7 @@ def evaluate(
     use_wandb: bool = True,
     eval_fraction: float = 1.0,
     use_tqdm: bool = True,
-
-):
+    ):
     """
     Evaluate the model on the given evaluation dataset.
 
@@ -454,11 +524,11 @@ def train_langvint(
     learn_angle: bool = True,
     print_log_freq: int = 100,
     wandb_log_freq: int = 10,
-    image_log_freq: int = 1000,
+    image_log_freq: int = 1000, 
     num_images_log: int = 8,
     use_wandb: bool = True,
     use_tqdm: bool = True,
-):
+    ):
     model.train()
     dist_loss_logger = Logger("dist_loss", "train", window_size=print_log_freq)
     action_loss_logger = Logger("action_loss", "train", window_size=print_log_freq)
@@ -544,49 +614,49 @@ def train_langvint(
         if i % print_log_freq == 0:
             print(f"Epoch {epoch}, Step {i}, Loss: {losses['total_loss'].item()}")
 
-        if use_wandb and i % wandb_log_freq == 0:
-            wandb.log({"train_loss": losses.item(), "step": epoch * len(dataloader) + i})
+        # if use_wandb and i % wandb_log_freq == 0:
+        #     wandb.log({"train_loss": losses.item(), "step": epoch * len(dataloader) + i})
     
 
-        # _log_data(
-        #     i=i,
-        #     epoch=epoch,
-        #     num_batches=num_batches,
-        #     normalized=normalized,
-        #     project_folder=project_folder,
-        #     num_images_log=num_images_log,
-        #     loggers=loggers,
-        #     obs_image=viz_obs_image,
-        #     goal_image=viz_goal_image,
-        #     action_pred=action_pred,
-        #     action_label=action_label,
-        #     dist_pred=dist_pred,
-        #     dist_label=dist_label,
-        #     goal_pos=goal_pos,
-        #     dataset_index=dataset_index,
-        #     wandb_log_freq=wandb_log_freq,
-        #     print_log_freq=print_log_freq,
-        #     image_log_freq=image_log_freq,
-        #     use_wandb=use_wandb,
-        #     mode="train",
-        #     use_latest=True,
-        # )
+        _log_langvint_data(
+            i=i,
+            epoch=epoch,
+            num_batches=num_batches,
+            normalized=normalized,
+            project_folder=project_folder,
+            num_images_log=num_images_log,
+            loggers=loggers,
+            obs_image=viz_obs_image,
+            goal_text=goal_text,
+            action_pred=action_pred,
+            action_label=action_label,
+            dist_pred=dist_pred,
+            dist_label=dist_label,
+            goal_pos=goal_pos,
+            dataset_index=dataset_index,
+            wandb_log_freq=wandb_log_freq,
+            print_log_freq=print_log_freq,
+            image_log_freq=image_log_freq,
+            use_wandb=use_wandb,
+            mode="train",
+            use_latest=True,
+        )
 def evaluate_langvint(
-        eval_type: str,
-        model: nn.Module,
-        dataloader: DataLoader,
-        transform: transforms,
-        device: torch.device,
-        project_folder: str,
-        normalized: bool,
-        epoch: int = 0,
-        alpha: float = 0.5,
-        learn_angle: bool = True,
-        num_images_log: int = 8,
-        use_wandb: bool = True,
-        eval_fraction: float = 1.0,
-        use_tqdm: bool = True,
-):
+    eval_type: str,
+    model: nn.Module,
+    dataloader: DataLoader,
+    transform: transforms,
+    device: torch.device,
+    project_folder: str,
+    normalized: bool,
+    epoch: int = 0,
+    alpha: float = 0.5,
+    learn_angle: bool = True,
+    num_images_log: int = 8,
+    use_wandb: bool = True,
+    eval_fraction: float = 1.0,
+    use_tqdm: bool = True,
+    ):
     model.eval()
     dist_loss_logger = Logger("dist_loss", eval_type)
     action_loss_logger = Logger("action_loss", eval_type)
@@ -646,10 +716,6 @@ def evaluate_langvint(
             action_mask = action_mask.to(device)
 
             dist_pred, action_pred = model_outputs
-            # distance_loss = F.mse_loss(dist_pred.squeeze(), dist_label)
-            # action_loss = F.mse_loss(action_pred, action_label)
-
-            # loss = alpha * distance_loss + (1 - alpha) * action_loss
             losses = _compute_losses(
                 dist_label=dist_label,
                 action_label=action_label,
@@ -660,13 +726,33 @@ def evaluate_langvint(
                 action_mask=action_mask,
             )
 
-            total_eval_loss += losses['total_loss'].item()
+            for key, value in losses.items():
+                if key in loggers:
+                    logger = loggers[key]
+                    logger.log_data(value.item())
 
-            if use_wandb and i % num_images_log == 0:
-                wandb.log({"eval_loss": losses['total_loss'].item(), "step": epoch * len(dataloader) + i})
 
-    avg_eval_loss = total_eval_loss / len(dataloader)
-    print(f"Evaluation completed. Average Loss: {avg_eval_loss}")
+    _log_langvint_data(
+        i=i,
+        epoch=epoch,
+        num_batches=num_batches,
+        normalized=normalized,
+        project_folder=project_folder,
+        num_images_log=num_images_log,
+        loggers=loggers,
+        obs_image=viz_obs_image,
+        goal_text=goal_text,
+        action_pred=action_pred,
+        action_label=action_label,
+        goal_pos=goal_pos,
+        dist_pred=dist_pred,
+        dist_label=dist_label,
+        dataset_index=dataset_index,
+        use_wandb=use_wandb,
+        mode=eval_type,
+        use_latest=False,
+        wandb_increment_step=False,
+    )
     return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
 
 

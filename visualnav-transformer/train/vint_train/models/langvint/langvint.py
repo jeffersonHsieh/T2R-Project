@@ -36,17 +36,25 @@ class LangViNT(BaseModel):
         self.obs_encoding_size = obs_encoding_size
         self.goal_encoding_size = obs_encoding_size
 
+        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_model.eval()
+        for param in self.clip_model.parameters():
+            param.requires_grad = False
+        
+        # take the output feature dimension of Linear layer in CLIP text projection head
+        self.num_goal_features = self.clip_model.text_projection.out_features
+
         self.late_fusion = late_fusion
         # TODO: MULTIMODAL FUSION ENCODER!
         # TODO: Should we use CLIP-ViT as Observation encoder as well?
         if obs_encoder.split("-")[0] == "efficientnet":
             self.obs_encoder = EfficientNet.from_name(obs_encoder, in_channels=3) # context
             self.num_obs_features = self.obs_encoder._fc.in_features
-            if self.late_fusion:
-                self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=3)
-            else:
-                self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=6) # obs+goal
-            self.num_goal_features = self.goal_encoder._fc.in_features
+            # if self.late_fusion:
+            #     self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=3)
+            # else:
+            #     self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=6) # obs+goal
+            # # self.num_goal_features = self.goal_encoder._fc.in_features
         else:
             raise NotImplementedError
         
@@ -55,10 +63,13 @@ class LangViNT(BaseModel):
         else:
             self.compress_obs_enc = nn.Identity()
         
-        if self.num_goal_features != self.goal_encoding_size:
-            self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
-        else:
-            self.compress_goal_enc = nn.Identity()
+        # if self.num_goal_features != self.goal_encoding_size:
+        #     self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
+        # else:
+        # self.compress_goal_enc = nn.Identity()
+
+        # train this only, always have this even if same feature size
+        self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.obs_encoding_size,
@@ -74,7 +85,13 @@ class LangViNT(BaseModel):
         self.action_predictor = nn.Sequential(
             nn.Linear(32, self.len_trajectory_pred * self.num_action_params),
         )
-        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+
+
+    def train(self, mode=True):
+        super(LangViNT, self).train(mode=mode)
+        # Overwrite train() to ensure Frozen models remain frozen.
+        self.clip_model.eval()
+
 
     def forward(self, obs_img: torch.Tensor, goal_text_input: torch.Tensor,goal_text_attn_mask:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Process observation images with EfficientNet
@@ -94,10 +111,13 @@ class LangViNT(BaseModel):
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
 
         # Encode the goal text using CLIP
+        
         goal_encoding = self.clip_model.get_text_features(
             input_ids=goal_text_input,
             attention_mask=goal_text_attn_mask
             )
+        goal_encoding = self.compress_goal_enc(goal_encoding)
+        # import pdb;pdb.set_trace()
 
         # Ensure goal_encoding is in the correct shape
         if len(goal_encoding.shape) == 2:

@@ -153,11 +153,14 @@ def train_eval_loop_langvint(
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
     dataloader: DataLoader,
     test_dataloaders: Dict[str, DataLoader],
+    transform: transforms,
     epochs: int,
     device: torch.device,
     project_folder: str,
-    print_log_freq: int = 100,
+    normalized: bool,
     wandb_log_freq: int = 10,
+    print_log_freq: int = 100,
+    image_log_freq: int = 1000,
     num_images_log: int = 8,
     current_epoch: int = 0,
     alpha: float = 0.5,
@@ -174,23 +177,31 @@ def train_eval_loop_langvint(
                 model=model,
                 optimizer=optimizer,
                 dataloader=dataloader,
+                transform=transform,
                 device=device,
+                project_folder=project_folder,
+                normalized=normalized,
                 epoch=epoch,
                 alpha=alpha,
                 learn_angle=learn_angle,
                 print_log_freq=print_log_freq,
                 wandb_log_freq=wandb_log_freq,
+                image_log_freq=image_log_freq,
                 num_images_log=num_images_log,
-                use_wandb=use_wandb,
+                use_wandb=use_wandb
             )
 
         avg_total_test_loss = []
         for dataset_type, loader in test_dataloaders.items():
             print(f"Start {dataset_type} LangViNT Testing Epoch {epoch}/{current_epoch + epochs - 1}")
             total_eval_loss = evaluate_langvint(
+                eval_type=dataset_type,
                 model=model,
                 dataloader=loader,
+                transform=transform,
                 device=device,
+                project_folder=project_folder,
+                normalized=normalized,
                 epoch=epoch,
                 alpha=alpha,
                 learn_angle=learn_angle,
@@ -363,15 +374,30 @@ def train_eval_loop_nomad(
     wandb.log({})
     print()
 
-def load_model(model, checkpoint: dict) -> None:
+def load_model(model, checkpoint: dict,lang=False) -> None:
     """Load model from checkpoint."""
     loaded_model = checkpoint["model"]
+    
     try:  # for DataParallel
         state_dict = loaded_model.module.state_dict()
-        model.load_state_dict(state_dict)
+        if lang:
+            model_state_dict = model.state_dict()
+            for name, param in state_dict.items():
+                if name not in ['compress_goal_enc.weight', 'compress_goal_enc.bias'] and name in model_state_dict:
+                    model_state_dict[name].copy_(param)
+            model.load_state_dict(model_state_dict, strict=False)
+        else:
+            model.load_state_dict(state_dict)
     except (RuntimeError, AttributeError) as e:
         state_dict = loaded_model.state_dict()
-        model.load_state_dict(state_dict)
+        if lang:
+            model_state_dict = model.state_dict()
+            for name, param in state_dict.items():
+                if name not in ['compress_goal_enc.weight', 'compress_goal_enc.bias'] and name in model_state_dict:
+                    model_state_dict[name].copy_(param)
+            model.load_state_dict(model_state_dict, strict=False)
+        else:
+            model.load_state_dict(state_dict)
 
 
 def load_ema_model(ema_model, state_dict: dict) -> None:

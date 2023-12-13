@@ -1,13 +1,13 @@
 project_name: langvint
 run_name: langvint-v1
-
+load_run: vint-release/vint-5c_2023_11_14_21_53_56
 # training setup
 use_wandb: True # set to false if you don't want to log to wandb
 train: True
-batch_size: 256
+batch_size: 64
 epochs: 100
 gpu_ids: [0]
-num_workers: 12
+num_workers: 4
 lr: 5e-4
 optimizer: adamw
 clipping: False
@@ -63,15 +63,15 @@ goal_input_type: "text"  # Indicate that the goal input will be text
 datasets:
   airsim_explore_text:
     data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_explore_text
-    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/train # path to train folder with traj_names.txt
-    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/test # path to test folder with traj_names.txt
+    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore_text/train # path to train folder with traj_names.txt
+    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore_text/test # path to test folder with traj_names.txt
     end_slack: 0 # because many trajectories end in collisions
     goals_per_obs: 1 # how many goals are sampled per observation
     negative_mining: True # negative mining from the ViNG paper (Shah et al.)
   airsim_test_text:
     data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_test_text
-    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/train # path to train folder with traj_names.txt
-    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/test/test # path to test folder with traj_names.txt
+    train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_test_text/train # path to train folder with traj_names.txt
+    test: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_test_text/test # path to test folder with traj_names.txt
     end_slack: 0 # because many trajectories end in collisions
     goals_per_obs: 1 # how many goals are sampled per observation
     negative_mining: True # negative mining from the ViNG paper (Shah et al.)
