@@ -10,9 +10,6 @@ import lmdb
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
-import torchvision.transforms as transforms
-
-from PIL import Image
 
 from vint_train.data.data_utils import (
     img_path_to_data,
@@ -128,10 +125,8 @@ class ViNT_Dataset(Dataset):
         else:
             self.num_action_params = 2
 
+
         self.goal_input_type = goal_input_type
-
-
-
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -234,7 +229,6 @@ class ViNT_Dataset(Dataset):
             with open(index_to_data_path, "wb") as f:
                 pickle.dump((self.index_to_data, self.goals_index), f)
 
-
     def _load_text(self, trajectory_name, time):
         traj_data = self._get_trajectory(trajectory_name)
         # offset 1 because goal descriptions are labeled by their time step
@@ -293,7 +287,7 @@ class ViNT_Dataset(Dataset):
         assert actions.shape == (self.len_traj_pred, self.num_action_params), f"{actions.shape} and {(self.len_traj_pred, self.num_action_params)} should be equal"
 
         return actions, goal_pos
-    
+
     def _get_data_type(self):
         return torch.float32 if self.goal_input_type == "image" else torch.int64
 
@@ -368,6 +362,7 @@ class ViNT_Dataset(Dataset):
 
         else:
             raise ValueError(f"Invalid goal input type {self.goal_input_type}")
+
 
         # Load other trajectory data
         curr_traj_data = self._get_trajectory(f_curr)

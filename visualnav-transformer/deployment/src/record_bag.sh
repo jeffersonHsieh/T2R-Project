@@ -2,6 +2,7 @@
 
 # Create a new tmux session
 session_name="record_bag_$(date +%s)"
+ros_bridge_setup=/mnt/d/airsim/AirSim/ros/devel/setup.bash
 tmux new-session -d -s $session_name
 
 # Split the window into four panes
@@ -15,9 +16,12 @@ tmux splitw -v -p 50 # split it into two halves
 
 # Run the roslaunch command in the first pane
 tmux select-pane -t 0
-tmux send-keys "source /mnt/d/airsim/AirSim/ros/devel/setup.bash" Enter
-# tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch" Enter
-tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch host:=$WSL_HOST_IP" Enter
+
+tmux send-keys "source ${ros_bridge_setup}" Enter
+
+# comment this and uncomment the next two line to run in wsl
+tmux send-keys "roslaunch airsim_ros_pkgs airsim_node.launch" Enter
+
 
 sleep 5
 

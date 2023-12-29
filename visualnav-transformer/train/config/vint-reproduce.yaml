@@ -56,6 +56,7 @@ image_size: [85, 64] # width, height
 goal_type: "image"
 
 datasets:
+
   airsim_explore:
     data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_explore # datasets/stanford_go_new
     train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore/train/
