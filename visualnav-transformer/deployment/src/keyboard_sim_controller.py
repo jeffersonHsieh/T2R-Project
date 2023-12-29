@@ -21,7 +21,8 @@ def init_flight(client: airsim.MultirotorClient):
     # get height
     _,_,z = get_drone_position(client)
     print(f"Height: {z}")
-    client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,z), airsim.to_quaternion(0, 0, 0)), True)
+    if z!=HEIGHT:
+        client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,HEIGHT), airsim.to_quaternion(0, 0, 0)), True)
     print("Ready to fly!")
 
 def get_drone_position(client: airsim.MultirotorClient):
