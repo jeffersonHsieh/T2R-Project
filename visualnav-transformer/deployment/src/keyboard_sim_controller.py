@@ -13,15 +13,28 @@ MAX_V = robot_config["max_v"]
 MAX_W = robot_config["max_w"] # rad/sec
 DEFAULT_YAW_RATE = 50 # math.degrees(MAX_W) # deg/sec
 # original script default is 50 deg/s * 0.2 secs
+if "set_height" in robot_config:
+	HEIGHT = robot_config["set_height"]
+	if HEIGHT > 0:
+		HEIGHT*=-1
+else:
+	HEIGHT = -3
+
 
 def init_flight(client: airsim.MultirotorClient):
+    client.confirmConnection()
     client.enableApiControl(True)
     client.armDisarm(True)
-    client.takeoffAsync().join()
+    # check if drone is airborne
+    state = client.getMultirotorState()
+    if state.landed_state == airsim.LandedState.Landed:
+        print("taking off...")
+        client.takeoffAsync().join()
     # get height
     _,_,z = get_drone_position(client)
     print(f"Height: {z}")
-    client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,z), airsim.to_quaternion(0, 0, 0)), True)
+    if z!=HEIGHT:
+        client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,HEIGHT), airsim.to_quaternion(0, 0, 0)), True)
     print("Ready to fly!")
 
 def get_drone_position(client: airsim.MultirotorClient):
@@ -86,7 +99,15 @@ def quaternion_to_euler_angles(w, x, y, z):
     return [yaw, pitch, roll]
 
 def main():
-    client = airsim.MultirotorClient(ip="172.18.80.1")
+    HOST = '127.0.0.1' # Standard loopback interface address (localhost)
+    from platform import uname
+    import os
+    if 'linux' in uname().system.lower() and 'microsoft' in uname().release.lower(): # In WSL2
+        if 'WSL_HOST_IP' in os.environ:
+            HOST = os.environ['WSL_HOST_IP']
+            print("Using WSL2 Host IP address: ", HOST)
+
+    client = airsim.MultirotorClient(ip=HOST)
     # client.reset()
     # try:
     init_flight(client)
