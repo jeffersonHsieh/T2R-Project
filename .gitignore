@@ -3,10 +3,17 @@
 *.png
 *.jpg
 *.html
+*.gz
+*.txt
+*.tar
+*.tar.gz
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
 
 # C extensions
 *.so

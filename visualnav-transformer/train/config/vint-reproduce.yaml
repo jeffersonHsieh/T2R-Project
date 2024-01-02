@@ -1,5 +1,5 @@
 project_name: vint-release
-run_name: vint-5c
+run_name: vint-test-TXT
 # load_run: vint-release/vint-5c_2023_11_14_21_53_56
 # training setup
 use_wandb: True # set to false if you don't want to log to wandb
@@ -56,13 +56,6 @@ image_size: [85, 64] # width, height
 goal_type: "image"
 
 datasets:
-  # go_stanford:
-  #   data_folder: /mnt/efs/fs1/t2r/visualnav-transformer/go_stanford # datasets/stanford_go_new
-  #   train: /mnt/efs/fs1/t2r/visualnav-transformer/train/vint_train/data/data_splits/go_stanford/train/
-  #   test: /mnt/efs/fs1/t2r/visualnav-transformer/train/vint_train/data/data_splits/go_stanford/test/
-  #   end_slack: 0
-  #   goals_per_obs: 2 # increase dataset size
-  #   negative_mining: True
   airsim_explore:
     data_folder: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/datasets/airsim_explore # datasets/stanford_go_new
     train: /mnt/efs/fs1/t2r/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/airsim_explore/train/
@@ -70,6 +63,14 @@ datasets:
     end_slack: 0
     goals_per_obs: 2 # increase dataset size
     negative_mining: True
+  # go_stanford:
+  #   data_folder: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/go_stanford # datasets/stanford_go_new
+  #   train: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/stanfordGO/train
+  #   test: /home/jarvis/T2R-Project/visualnav-transformer/train/vint_train/data/data_splits/stanfordGO/test
+  #   end_slack: 0
+  #   goals_per_obs: 1 # increase dataset size
+  #   negative_mining: True
+
 
   # private datasets (uncomment if you have access)
   # seattle:

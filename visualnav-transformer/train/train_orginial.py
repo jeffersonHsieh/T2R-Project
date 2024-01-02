@@ -9,8 +9,6 @@ import pdb
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, ConcatDataset
-from torch.utils.data.dataloader import default_collate
-
 from torch.optim import Adam, AdamW
 from torchvision import transforms
 import torch.backends.cudnn as cudnn
@@ -19,14 +17,11 @@ from warmup_scheduler import GradualWarmupScheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.optimization import get_scheduler
 
-from transformers import CLIPProcessor
-
 """
 IMPORT YOUR MODEL HERE
 """
 from vint_train.models.gnm.gnm import GNM
 from vint_train.models.vint.vint import ViNT
-from vint_train.models.langvint.langvint import LangViNT #Ours
 from vint_train.models.vint.vit import ViT
 from vint_train.models.nomad.nomad import NoMaD, DenseNetwork
 from vint_train.models.nomad.nomad_vint import NoMaD_ViNT, replace_bn_with_gn
@@ -37,40 +32,8 @@ from vint_train.data.vint_dataset import ViNT_Dataset
 from vint_train.training.train_eval_loop import (
     train_eval_loop,
     train_eval_loop_nomad,
-    train_eval_loop_langvint,
     load_model,
 )
-
-global_processor = None
-
-def worker_init_fn(worker_id):
-    global global_processor
-    # Initialize the processor for each worker
-    global_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-
-
-def text_goal_collate_fn(batch):
-    # Unzip the batch into separate lists
-    global global_processor
-    # Ensure the processor is available
-    assert global_processor is not None, "Processor not initialized"
-    obs_images, goal_datas, actions, distances, goal_poses, dataset_indices, action_masks = zip(*batch)
-
-    # Process the tensor data
-    obs_images = torch.stack(obs_images)
-    actions = torch.stack(actions)
-    distances = torch.stack(distances)
-    goal_poses = torch.stack(goal_poses)
-    dataset_indices = torch.stack(dataset_indices)
-    action_masks = torch.stack(action_masks)
-
-    # Process the text data with the CLIP processor
-    processed_texts = global_processor(text=list(goal_datas), return_tensors="pt", padding=True, truncation=True)
-    input_ids = processed_texts.input_ids
-    attention_masks = processed_texts.attention_mask
-
-    return obs_images, input_ids, actions, distances, goal_poses, dataset_indices, action_masks, attention_masks
-
 
 
 def main(config):
@@ -127,10 +90,6 @@ def main(config):
             data_config["waypoint_spacing"] = 1
 
         for data_split_type in ["train", "test"]:
-            data_config = config["datasets"][dataset_name]
-            # Determine goal input type based on config
-            goal_input_type = config.get("goal_input_type", "image")
-
             if data_split_type in data_config:
                     dataset = ViNT_Dataset(
                         data_folder=data_config["data_folder"],
@@ -150,9 +109,7 @@ def main(config):
                         end_slack=data_config["end_slack"],
                         goals_per_obs=data_config["goals_per_obs"],
                         normalize=config["normalize"],
-                        ###TEXT DATA INPUT
                         goal_type=config["goal_type"],
-                        goal_input_type=goal_input_type,
                     )
                     if data_split_type == "train":
                         train_dataset.append(dataset)
@@ -164,16 +121,7 @@ def main(config):
 
     # combine all the datasets from different robots
     train_dataset = ConcatDataset(train_dataset)
-    # Assign the default collate function to a variable
-    collate_func = default_collate
 
-
-    global global_processor
-    worker_init_func=None
-    if config['goal_input_type']=='text':
-        global_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-        collate_func=text_goal_collate_fn
-        worker_init_func=worker_init_fn
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -181,19 +129,11 @@ def main(config):
         num_workers=config["num_workers"],
         drop_last=False,
         persistent_workers=True,
-        # persistent_workers=False,
-        collate_fn=collate_func,
-        worker_init_fn=worker_init_func,
     )
 
     if "eval_batch_size" not in config:
         config["eval_batch_size"] = config["batch_size"]
 
-    test_collate_func=default_collate
-    test_worker_init_func=None
-    if config['goal_input_type']=='text':
-        test_collate_func=text_goal_collate_fn
-        test_worker_init_func=worker_init_fn
     for dataset_type, dataset in test_dataloaders.items():
         test_dataloaders[dataset_type] = DataLoader(
             dataset,
@@ -201,8 +141,6 @@ def main(config):
             shuffle=True,
             num_workers=0,
             drop_last=False,
-            collate_fn=test_collate_func,
-            worker_init_fn=test_worker_init_func,
         )
 
     # Create the model
@@ -226,18 +164,6 @@ def main(config):
             mha_num_attention_layers=config["mha_num_attention_layers"],
             mha_ff_dim_factor=config["mha_ff_dim_factor"],
         )
-    elif config["model_type"] == "langvint":
-        model = LangViNT(
-            context_size=config["context_size"],
-            len_traj_pred=config["len_traj_pred"],
-            learn_angle=config["learn_angle"],
-            obs_encoder=config["obs_encoder"],
-            obs_encoding_size=config["obs_encoding_size"],
-            late_fusion=config["late_fusion"],
-            mha_num_attention_heads=config["mha_num_attention_heads"],
-            mha_num_attention_layers=config["mha_num_attention_layers"],
-            mha_ff_dim_factor=config["mha_ff_dim_factor"],
-        )
     elif config["model_type"] == "nomad":
         if config["vision_encoder"] == "nomad_vint":
             vision_encoder = NoMaD_ViNT(
@@ -249,7 +175,7 @@ def main(config):
             )
             vision_encoder = replace_bn_with_gn(vision_encoder)
         elif config["vision_encoder"] == "vib": 
-            vision_encoder = Vib(
+            vision_encoder = ViB(
                 obs_encoding_size=config["encoding_size"],
                 context_size=config["context_size"],
                 mha_num_attention_heads=config["mha_num_attention_heads"],
@@ -358,7 +284,7 @@ def main(config):
         print("Loading model from ", load_project_folder)
         latest_path = os.path.join(load_project_folder, "latest.pth")
         latest_checkpoint = torch.load(latest_path) #f"cuda:{}" if torch.cuda.is_available() else "cpu")
-        load_model(model, latest_checkpoint,lang=config["model_type"]=="langvint")
+        load_model(model, latest_checkpoint)
         current_epoch = latest_checkpoint["epoch"] + 1
 
     # Multi-GPU
@@ -367,49 +293,12 @@ def main(config):
     model = model.to(device)
 
     if "load_run" in config:  # load optimizer and scheduler after data parallel
-        try:
-            optimizer.load_state_dict(latest_checkpoint["optimizer"].state_dict())
-        except ValueError:
-            # Load the state dict
-            saved_state_dict = latest_checkpoint['optimizer'].state_dict()
-
-            # Loop through each parameter group (to support optimizers with multiple groups)
-            for group_index, param_group in enumerate(optimizer.param_groups):
-                saved_group = saved_state_dict['param_groups'][group_index]
-
-                # Load only hyperparameters that exist in both the saved state and the current optimizer
-                for key in saved_group:
-                    if key != 'params':  # Exclude the 'params' key as it refers to model parameters
-                        if key in param_group:
-                            param_group[key]=saved_group[key]
-        # import pdb;pdb.set_trace()
+        optimizer.load_state_dict(latest_checkpoint["optimizer"].state_dict())
         if scheduler is not None:
             scheduler.load_state_dict(latest_checkpoint["scheduler"].state_dict())
 
     if config["model_type"] == "vint" or config["model_type"] == "gnm": 
         train_eval_loop(
-            train_model=config["train"],
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            dataloader=train_loader,
-            test_dataloaders=test_dataloaders,
-            transform=transform,
-            epochs=config["epochs"],
-            device=device,
-            project_folder=config["project_folder"],
-            normalized=config["normalize"],
-            print_log_freq=config["print_log_freq"],
-            image_log_freq=config["image_log_freq"],
-            num_images_log=config["num_images_log"],
-            current_epoch=current_epoch,
-            learn_angle=config["learn_angle"],
-            alpha=config["alpha"],
-            use_wandb=config["use_wandb"],
-            eval_fraction=config["eval_fraction"],
-        )
-    elif config["model_type"] == "langvint":
-        train_eval_loop_langvint(
             train_model=config["train"],
             model=model,
             optimizer=optimizer,

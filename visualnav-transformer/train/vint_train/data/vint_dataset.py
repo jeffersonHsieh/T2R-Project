@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pickle
 import yaml
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union, Text
 import tqdm
 import io
 import lmdb
@@ -40,6 +40,9 @@ class ViNT_Dataset(Dataset):
         normalize: bool = True,
         obs_type: str = "image",
         goal_type: str = "image",
+        goal_input_type: str = "image",  # New parameter to specify the type of goal input
+        # text_data_folder: Optional[str] = None,  # New parameter for the path to text files
+
     ):
         """
         Main ViNT dataset class
@@ -122,6 +125,9 @@ class ViNT_Dataset(Dataset):
             self.num_action_params = 3
         else:
             self.num_action_params = 2
+
+        self.goal_input_type = goal_input_type
+
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -224,6 +230,15 @@ class ViNT_Dataset(Dataset):
             with open(index_to_data_path, "wb") as f:
                 pickle.dump((self.index_to_data, self.goals_index), f)
 
+    def _load_text(self, trajectory_name, time):
+        traj_data = self._get_trajectory(trajectory_name)
+        # offset 1 because goal descriptions are labeled by their time step
+        # so if you are at time step 0, you want the description for time step 1 as goal description
+        time = self.find_ceiling_time_step(time+1, traj_data["text_time_steps"])
+        text_data = traj_data["captions"][time]
+
+        return text_data
+
     def _load_image(self, trajectory_name, time):
         image_path = get_data_path(self.data_folder, trajectory_name, time)
 
@@ -266,7 +281,6 @@ class ViNT_Dataset(Dataset):
             actions = waypoints[1:]
         
         if self.normalize:
-            # divide by the dataset specific waypoint spacing, and multiply by the normalized spacing
             actions[:, :2] /= self.data_config["metric_waypoint_spacing"] * self.waypoint_spacing
             goal_pos /= self.data_config["metric_waypoint_spacing"] * self.waypoint_spacing
 
@@ -274,54 +288,82 @@ class ViNT_Dataset(Dataset):
 
         return actions, goal_pos
     
+    def _get_data_type(self):
+        return torch.float32 if self.goal_input_type == "image" else torch.int64
+
+    def find_ceiling_time_step(self,query_time_step, time_steps):
+        """
+        Find the ceiling time step for a given query time step using binary search.
+        :param query_time_step: The time step to query.
+        :param time_steps: Sorted list of available time steps.
+        :return: The ceiling time step.
+        """
+        left, right = 0, len(time_steps) - 1
+        ceil = None
+        if query_time_step > time_steps[-1]:
+            return time_steps[-1]
+        while left <= right:
+            mid = left + (right - left) // 2
+            if time_steps[mid] == query_time_step:
+                return time_steps[mid]
+            elif time_steps[mid] < query_time_step:
+                left = mid + 1
+            else:
+                ceil = time_steps[mid]
+                right = mid - 1
+
+        return ceil
+
+
     def _get_trajectory(self, trajectory_name):
+        # assumes the structure dataset_folder/traj_name/captions/ ...
         if trajectory_name in self.trajectory_cache:
             return self.trajectory_cache[trajectory_name]
         else:
             with open(os.path.join(self.data_folder, trajectory_name, "traj_data.pkl"), "rb") as f:
                 traj_data = pickle.load(f)
+            captions_dir=os.path.join(self.data_folder, trajectory_name, "captions")
+            traj_data["captions"] = {}
+            for cap in os.listdir(captions_dir):
+                if cap.endswith(".txt"):
+                    with open(os.path.join(captions_dir, cap), "r") as f:
+                        # extract the time step from the file name
+                        try:
+                            time_step = int(cap.split(".")[0])
+                        except ValueError:
+                            continue
+                        traj_data["captions"][time_step] = f.read()
+                traj_data["text_time_steps"] = sorted(list(traj_data["captions"].keys()))
             self.trajectory_cache[trajectory_name] = traj_data
             return traj_data
 
     def __len__(self) -> int:
         return len(self.index_to_data)
 
-    def __getitem__(self, i: int) -> Tuple[torch.Tensor]:
-        """
-        Args:
-            i (int): index to ith datapoint
-        Returns:
-            Tuple of tensors containing the context, observation, goal, transformed context, transformed observation, transformed goal, distance label, and action label
-                obs_image (torch.Tensor): tensor of shape [3, H, W] containing the image of the robot's observation
-                goal_image (torch.Tensor): tensor of shape [3, H, W] containing the subgoal image 
-                dist_label (torch.Tensor): tensor of shape (1,) containing the distance labels from the observation to the goal
-                action_label (torch.Tensor): tensor of shape (5, 2) or (5, 4) (if training with angle) containing the action labels from the observation to the goal
-                which_dataset (torch.Tensor): index of the datapoint in the dataset [for identifying the dataset for visualization when using multiple datasets]
-        """
+    def __getitem__(self, i: int) -> Tuple[Union[torch.Tensor,Text]]:
         f_curr, curr_time, max_goal_dist = self.index_to_data[i]
         f_goal, goal_time, goal_is_negative = self._sample_goal(f_curr, curr_time, max_goal_dist)
 
-        # Load images
-        context = []
-        if self.context_type == "temporal":
-            # sample the last self.context_size times from interval [0, curr_time)
-            context_times = list(
-                range(
-                    curr_time + -self.context_size * self.waypoint_spacing,
-                    curr_time + 1,
-                    self.waypoint_spacing,
-                )
+        # Load images for the current context
+        context_images = [
+            self._load_image(f_curr, t) for t in range(
+                curr_time - self.context_size * self.waypoint_spacing,
+                curr_time + 1,
+                self.waypoint_spacing
             )
-            context = [(f_curr, t) for t in context_times]
+        ]
+        obs_image = torch.cat(context_images)  # Stack images to create a tensor
+
+        # Load goal data based on goal_input_type
+        if self.goal_input_type == "image":
+            goal_data = self._load_image(f_goal, goal_time)
+        elif self.goal_input_type == "text":
+            # Load goal description, would return as raw strings, and we do batching/tokenization in collate_fn
+            goal_data = self._load_text(f_goal, goal_time)
+
         else:
-            raise ValueError(f"Invalid context type {self.context_type}")
+            raise ValueError(f"Invalid goal input type {self.goal_input_type}")
 
-        obs_image = torch.cat([
-            self._load_image(f, t) for f, t in context
-        ])
-
-        # Load goal image
-        goal_image = self._load_image(f_goal, goal_time)
 
         # Load other trajectory data
         curr_traj_data = self._get_trajectory(f_curr)
@@ -333,7 +375,6 @@ class ViNT_Dataset(Dataset):
         assert goal_time < goal_traj_len, f"{goal_time} an {goal_traj_len}"
 
         # Compute actions
-        # import pdb;pdb.set_trace()
         actions, goal_pos = self._compute_actions(curr_traj_data, curr_time, goal_time)
         
         # Compute distances
@@ -353,9 +394,10 @@ class ViNT_Dataset(Dataset):
             (not goal_is_negative)
         )
 
+        # Package the observation, goal data, actions, and other information
         return (
             torch.as_tensor(obs_image, dtype=torch.float32),
-            torch.as_tensor(goal_image, dtype=torch.float32),
+            goal_data, # str if goal_input_type is text
             actions_torch,
             torch.as_tensor(distance, dtype=torch.int64),
             torch.as_tensor(goal_pos, dtype=torch.float32),

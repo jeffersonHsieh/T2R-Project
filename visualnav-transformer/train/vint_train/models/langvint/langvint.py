@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Tuple
 from efficientnet_pytorch import EfficientNet
 from vint_train.models.base_model import BaseModel
 from vint_train.models.langvint.self_attention import MultiLayerDecoder
+from transformers import CLIPModel
 
 class LangViNT(BaseModel):
     def __init__(
@@ -35,16 +36,25 @@ class LangViNT(BaseModel):
         self.obs_encoding_size = obs_encoding_size
         self.goal_encoding_size = obs_encoding_size
 
+        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_model.eval()
+        for param in self.clip_model.parameters():
+            param.requires_grad = False
+        
+        # take the output feature dimension of Linear layer in CLIP text projection head
+        self.num_goal_features = self.clip_model.text_projection.out_features
+
         self.late_fusion = late_fusion
         # TODO: MULTIMODAL FUSION ENCODER!
+        # TODO: Should we use CLIP-ViT as Observation encoder as well?
         if obs_encoder.split("-")[0] == "efficientnet":
             self.obs_encoder = EfficientNet.from_name(obs_encoder, in_channels=3) # context
             self.num_obs_features = self.obs_encoder._fc.in_features
-            if self.late_fusion:
-                self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=3)
-            else:
-                self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=6) # obs+goal
-            self.num_goal_features = self.goal_encoder._fc.in_features
+            # if self.late_fusion:
+            #     self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=3)
+            # else:
+            #     self.goal_encoder = EfficientNet.from_name("efficientnet-b0", in_channels=6) # obs+goal
+            # # self.num_goal_features = self.goal_encoder._fc.in_features
         else:
             raise NotImplementedError
         
@@ -53,10 +63,13 @@ class LangViNT(BaseModel):
         else:
             self.compress_obs_enc = nn.Identity()
         
-        if self.num_goal_features != self.goal_encoding_size:
-            self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
-        else:
-            self.compress_goal_enc = nn.Identity()
+        # if self.num_goal_features != self.goal_encoding_size:
+        #     self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
+        # else:
+        # self.compress_goal_enc = nn.Identity()
+
+        # train this only, always have this even if same feature size
+        self.compress_goal_enc = nn.Linear(self.num_goal_features, self.goal_encoding_size)
 
         self.decoder = MultiLayerDecoder(
             embed_dim=self.obs_encoding_size,
@@ -73,69 +86,65 @@ class LangViNT(BaseModel):
             nn.Linear(32, self.len_trajectory_pred * self.num_action_params),
         )
 
-    def forward(
-        self, obs_img: torch.tensor, goal_img: torch.tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        
-        # get the fused observation and goal encoding
-        if self.late_fusion:
-            goal_encoding = self.goal_encoder.extract_features(goal_img)
-        else:
-            obsgoal_img = torch.cat([obs_img[:, 3*self.context_size:, :, :], goal_img], dim=1)
-            goal_encoding = self.goal_encoder.extract_features(obsgoal_img)
-        goal_encoding = self.goal_encoder._avg_pooling(goal_encoding)
-        if self.goal_encoder._global_params.include_top:
-            goal_encoding = goal_encoding.flatten(start_dim=1)
-            goal_encoding = self.goal_encoder._dropout(goal_encoding)
-        # currently, the size of goal_encoding is [batch_size, num_goal_features]
-        goal_encoding = self.compress_goal_enc(goal_encoding)
-        if len(goal_encoding.shape) == 2:
-            goal_encoding = goal_encoding.unsqueeze(1)
-        # currently, the size of goal_encoding is [batch_size, 1, self.goal_encoding_size]
-        assert goal_encoding.shape[2] == self.goal_encoding_size
-        
-        # split the observation into context based on the context size
-        # image size is [batch_size, 3*self.context_size, H, W]
+    def train(self, mode=True):
+        super(LangViNT, self).train(mode=mode)
+        # Overwrite train() to ensure Frozen models remain frozen.
+        self.clip_model.eval()
+
+
+    def forward(self, obs_img: torch.Tensor, goal_text_input: torch.Tensor,goal_text_attn_mask:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Process observation images with EfficientNet
+        # Split the observation into context based on the context size
         obs_img = torch.split(obs_img, 3, dim=1)
-
-        # image size is [batch_size*self.context_size, 3, H, W]
         obs_img = torch.concat(obs_img, dim=0)
 
-        # get the observation encoding
+        # Get the observation encoding
         obs_encoding = self.obs_encoder.extract_features(obs_img)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, H/32, W/32]
         obs_encoding = self.obs_encoder._avg_pooling(obs_encoding)
-        # currently the size is [batch_size*(self.context_size + 1), 1280, 1, 1]
         if self.obs_encoder._global_params.include_top:
             obs_encoding = obs_encoding.flatten(start_dim=1)
             obs_encoding = self.obs_encoder._dropout(obs_encoding)
-        # currently, the size is [batch_size, self.context_size+2, self.obs_encoding_size]
 
         obs_encoding = self.compress_obs_enc(obs_encoding)
-        # currently, the size is [batch_size*(self.context_size + 1), self.obs_encoding_size]
-        # reshape the obs_encoding to [context + 1, batch, encoding_size], note that the order is flipped
         obs_encoding = obs_encoding.reshape((self.context_size+1, -1, self.obs_encoding_size))
         obs_encoding = torch.transpose(obs_encoding, 0, 1)
-        # currently, the size is [batch_size, self.context_size+1, self.obs_encoding_size]
 
-        # concatenate the goal encoding to the observation encoding
+        # Encode the goal text using CLIP
+        
+        goal_encoding = self.clip_model.get_text_features(
+            input_ids=goal_text_input,
+            attention_mask=goal_text_attn_mask
+            )
+        goal_encoding = self.compress_goal_enc(goal_encoding)
+        # import pdb;pdb.set_trace()
+
+        # Ensure goal_encoding is in the correct shape
+        if len(goal_encoding.shape) == 2:
+            goal_encoding = goal_encoding.unsqueeze(1)
+
+        # Concatenate the goal encoding to the observation encoding
         tokens = torch.cat((obs_encoding, goal_encoding), dim=1)
-        final_repr = self.decoder(tokens)
-        # currently, the size is [batch_size, 32]
 
+        # Pass through the decoder
+        final_repr = self.decoder(tokens)
+
+        # Predict distance and actions
         dist_pred = self.dist_predictor(final_repr)
         action_pred = self.action_predictor(final_repr)
 
-        # augment outputs to match labels size-wise
+        # Post-process action predictions
         action_pred = action_pred.reshape(
             (action_pred.shape[0], self.len_trajectory_pred, self.num_action_params)
         )
         action_pred[:, :, :2] = torch.cumsum(
             action_pred[:, :, :2], dim=1
-        )  # convert position deltas into waypoints
+        )  # Convert position deltas into waypoints
         if self.learn_angle:
             action_pred[:, :, 2:] = F.normalize(
                 action_pred[:, :, 2:].clone(), dim=-1
-            )  # normalize the angle prediction
+            )  # Normalize the angle prediction
+
+        # TODO: also return CLIP text projection pooled vector for regularization/alignment. should freeze CLIPTextEncoder and only unfreeze projection layer
+        # TODO: finer grained alignment, maybe use GroundingDINO like object detectors for position+object alignment (both info available in generated caption)
         return dist_pred, action_pred

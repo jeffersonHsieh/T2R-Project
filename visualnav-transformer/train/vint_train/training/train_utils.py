@@ -117,7 +117,7 @@ def _log_data(
     print_log_freq=1,
     image_log_freq=1,
     wandb_increment_step=True,
-):
+    ):
     """
     Log data to wandb and print to console.
     """
@@ -163,6 +163,77 @@ def _log_data(
         )
 
 
+
+def _log_langvint_data(
+    i,
+    epoch,
+    num_batches,
+    normalized,
+    project_folder,
+    num_images_log,
+    loggers,
+    obs_image,
+    goal_text,
+    action_pred,
+    action_label,
+    dist_pred,
+    dist_label,
+    goal_pos,
+    dataset_index,
+    use_wandb,
+    mode,
+    use_latest,
+    wandb_log_freq=1,
+    print_log_freq=1,
+    image_log_freq=1,
+    wandb_increment_step=True,
+    ):
+    """
+    Log data to wandb and print to console.
+    """
+    data_log = {}
+    for key, logger in loggers.items():
+        if use_latest:
+            data_log[logger.full_name()] = logger.latest()
+            if i % print_log_freq == 0 and print_log_freq != 0:
+                print(f"(epoch {epoch}) (batch {i}/{num_batches - 1}) {logger.display()}")
+        else:
+            data_log[logger.full_name()] = logger.average()
+            if i % print_log_freq == 0 and print_log_freq != 0:
+                print(f"(epoch {epoch}) {logger.full_name()} {logger.average()}")
+
+    if use_wandb and i % wandb_log_freq == 0 and wandb_log_freq != 0:
+        wandb.log(data_log, commit=wandb_increment_step)
+
+    # if image_log_freq != 0 and i % image_log_freq == 0:
+    #     visualize_dist_pred(
+    #         to_numpy(obs_image),
+    #         to_numpy(goal_image),
+    #         to_numpy(dist_pred),
+    #         to_numpy(dist_label),
+    #         mode,
+    #         project_folder,
+    #         epoch,
+    #         num_images_log,
+    #         use_wandb=use_wandb,
+    #     )
+    #     visualize_traj_pred(
+    #         to_numpy(obs_image),
+    #         to_numpy(goal_image),
+    #         to_numpy(dataset_index),
+    #         to_numpy(goal_pos),
+    #         to_numpy(action_pred),
+    #         to_numpy(action_label),
+    #         mode,
+    #         normalized,
+    #         project_folder,
+    #         epoch,
+    #         num_images_log,
+    #         use_wandb=use_wandb,
+    #     )
+
+
+
 def train(
     model: nn.Module,
     optimizer: Adam,
@@ -180,7 +251,7 @@ def train(
     num_images_log: int = 8,
     use_wandb: bool = True,
     use_tqdm: bool = True,
-):
+    ):
     """
     Train the model for one epoch.
 
@@ -200,6 +271,7 @@ def train(
         use_wandb: whether to use wandb
         use_tqdm: whether to use tqdm
     """
+    # TODO: refer to here for moving to device
     model.train()
     dist_loss_logger = Logger("dist_loss", "train", window_size=print_log_freq)
     action_loss_logger = Logger("action_loss", "train", window_size=print_log_freq)
@@ -245,7 +317,6 @@ def train(
             dataset_index,
             action_mask,
         ) = data
-
         obs_images = torch.split(obs_image, 3, dim=1)
         viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
         obs_images = [transform(obs_image).to(device) for obs_image in obs_images]
@@ -322,8 +393,7 @@ def evaluate(
     use_wandb: bool = True,
     eval_fraction: float = 1.0,
     use_tqdm: bool = True,
-
-):
+    ):
     """
     Evaluate the model on the given evaluation dataset.
 
@@ -439,6 +509,250 @@ def evaluate(
         wandb_increment_step=False,
     )
 
+    return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
+
+def train_langvint(
+    model: nn.Module,
+    optimizer: Adam,
+    dataloader: DataLoader,
+    transform: transforms,
+    device: torch.device,
+    project_folder: str,
+    normalized: bool,
+    epoch: int,
+    alpha: float = 0.5,
+    learn_angle: bool = True,
+    print_log_freq: int = 100,
+    wandb_log_freq: int = 10,
+    image_log_freq: int = 1000, 
+    num_images_log: int = 8,
+    use_wandb: bool = True,
+    use_tqdm: bool = True,
+    ):
+    model.train()
+    dist_loss_logger = Logger("dist_loss", "train", window_size=print_log_freq)
+    action_loss_logger = Logger("action_loss", "train", window_size=print_log_freq)
+    action_waypts_cos_sim_logger = Logger(
+        "action_waypts_cos_sim", "train", window_size=print_log_freq
+    )
+    multi_action_waypts_cos_sim_logger = Logger(
+        "multi_action_waypts_cos_sim", "train", window_size=print_log_freq
+    )
+    total_loss_logger = Logger("total_loss", "train", window_size=print_log_freq)
+    loggers = {
+        "dist_loss": dist_loss_logger,
+        "action_loss": action_loss_logger,
+        "action_waypts_cos_sim": action_waypts_cos_sim_logger,
+        "multi_action_waypts_cos_sim": multi_action_waypts_cos_sim_logger,
+        "total_loss": total_loss_logger,
+    }
+    if learn_angle:
+        action_orien_cos_sim_logger = Logger(
+            "action_orien_cos_sim", "train", window_size=print_log_freq
+        )
+        multi_action_orien_cos_sim_logger = Logger(
+            "multi_action_orien_cos_sim", "train", window_size=print_log_freq
+        )
+        loggers["action_orien_cos_sim"] = action_orien_cos_sim_logger
+        loggers["multi_action_orien_cos_sim"] = multi_action_orien_cos_sim_logger
+
+    num_batches = len(dataloader)
+    tqdm_iter = tqdm.tqdm(
+        dataloader,
+        disable=not use_tqdm,
+        dynamic_ncols=True,
+        desc=f"Training epoch {epoch}",
+    )
+    for i, data in enumerate(tqdm_iter):
+        # TODO
+        (
+            obs_image,
+            goal_text,
+            action_label,
+            dist_label,
+            goal_pos,
+            dataset_index,
+            action_mask,
+            text_attn_mask
+        ) = data
+        # obs_images, goal_text, distances, actions = data[0].to(device), data[1], data[2].to(device), data[3].to(device)
+        obs_images = torch.split(obs_image, 3, dim=1)
+        viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
+        obs_images = [transform(obs_image).to(device) for obs_image in obs_images]
+        obs_image = torch.cat(obs_images, dim=1)
+
+        goal_text = goal_text.to(device)
+        text_attn_mask = text_attn_mask.to(device)
+
+        model_outputs = model(obs_image,goal_text,text_attn_mask)
+
+        dist_label = dist_label.to(device)
+        action_label = action_label.to(device)
+        action_mask = action_mask.to(device)
+        
+        optimizer.zero_grad()
+
+        dist_pred, action_pred = model_outputs
+
+        # Assuming the distance and action losses are calculated similarly to ViNT
+        losses = _compute_losses(
+            dist_label=dist_label,
+            action_label=action_label,
+            dist_pred=dist_pred,
+            action_pred=action_pred,
+            alpha=alpha,
+            learn_angle=learn_angle,
+            action_mask=action_mask,
+        )
+        losses['total_loss'].backward()
+        optimizer.step()
+
+        for key, value in losses.items():
+            if key in loggers:
+                logger = loggers[key]
+                logger.log_data(value.item())
+        if i % print_log_freq == 0:
+            print(f"Epoch {epoch}, Step {i}, Loss: {losses['total_loss'].item()}")
+
+        # if use_wandb and i % wandb_log_freq == 0:
+        #     wandb.log({"train_loss": losses.item(), "step": epoch * len(dataloader) + i})
+    
+
+        _log_langvint_data(
+            i=i,
+            epoch=epoch,
+            num_batches=num_batches,
+            normalized=normalized,
+            project_folder=project_folder,
+            num_images_log=num_images_log,
+            loggers=loggers,
+            obs_image=viz_obs_image,
+            goal_text=goal_text,
+            action_pred=action_pred,
+            action_label=action_label,
+            dist_pred=dist_pred,
+            dist_label=dist_label,
+            goal_pos=goal_pos,
+            dataset_index=dataset_index,
+            wandb_log_freq=wandb_log_freq,
+            print_log_freq=print_log_freq,
+            image_log_freq=image_log_freq,
+            use_wandb=use_wandb,
+            mode="train",
+            use_latest=True,
+        )
+def evaluate_langvint(
+    eval_type: str,
+    model: nn.Module,
+    dataloader: DataLoader,
+    transform: transforms,
+    device: torch.device,
+    project_folder: str,
+    normalized: bool,
+    epoch: int = 0,
+    alpha: float = 0.5,
+    learn_angle: bool = True,
+    num_images_log: int = 8,
+    use_wandb: bool = True,
+    eval_fraction: float = 1.0,
+    use_tqdm: bool = True,
+    ):
+    model.eval()
+    dist_loss_logger = Logger("dist_loss", eval_type)
+    action_loss_logger = Logger("action_loss", eval_type)
+    action_waypts_cos_sim_logger = Logger("action_waypts_cos_sim", eval_type)
+    multi_action_waypts_cos_sim_logger = Logger("multi_action_waypts_cos_sim", eval_type)
+    total_loss_logger = Logger("total_loss", eval_type)
+    loggers = {
+        "dist_loss": dist_loss_logger,
+        "action_loss": action_loss_logger,
+        "action_waypts_cos_sim": action_waypts_cos_sim_logger,
+        "multi_action_waypts_cos_sim": multi_action_waypts_cos_sim_logger,
+        "total_loss": total_loss_logger,
+    }
+    if learn_angle:
+        action_orien_cos_sim_logger = Logger("action_orien_cos_sim", eval_type)
+        multi_action_orien_cos_sim_logger = Logger("multi_action_orien_cos_sim", eval_type)
+        loggers["action_orien_cos_sim"] = action_orien_cos_sim_logger
+        loggers["multi_action_orien_cos_sim"] = multi_action_orien_cos_sim_logger
+
+    num_batches = len(dataloader)
+    num_batches = max(int(num_batches * eval_fraction), 1)
+    viz_obs_image = None
+
+    total_eval_loss = 0
+    with torch.no_grad():
+        tqdm_iter = tqdm.tqdm(
+            itertools.islice(dataloader, num_batches),
+            total=num_batches,
+            disable=not use_tqdm,
+            dynamic_ncols=True,
+            desc=f"Evaluating {eval_type} for epoch {epoch}",
+        )
+
+        for i, data in enumerate(tqdm_iter):
+            (
+                obs_image,
+                goal_text,
+                action_label,
+                dist_label,
+                goal_pos,
+                dataset_index,
+                action_mask,
+                text_attn_mask
+            ) = data
+
+            obs_images = torch.split(obs_image, 3, dim=1)
+            viz_obs_image = TF.resize(obs_images[-1], VISUALIZATION_IMAGE_SIZE)
+            obs_images = [transform(obs_image).to(device) for obs_image in obs_images]
+            obs_image = torch.cat(obs_images, dim=1)
+            
+            goal_text = goal_text.to(device)
+            text_attn_mask = text_attn_mask.to(device)
+            
+            model_outputs = model(obs_image,goal_text,text_attn_mask)
+            dist_label = dist_label.to(device)
+            action_label = action_label.to(device)
+            action_mask = action_mask.to(device)
+
+            dist_pred, action_pred = model_outputs
+            losses = _compute_losses(
+                dist_label=dist_label,
+                action_label=action_label,
+                dist_pred=dist_pred,
+                action_pred=action_pred,
+                alpha=alpha,
+                learn_angle=learn_angle,
+                action_mask=action_mask,
+            )
+
+            for key, value in losses.items():
+                if key in loggers:
+                    logger = loggers[key]
+                    logger.log_data(value.item())
+
+
+    _log_langvint_data(
+        i=i,
+        epoch=epoch,
+        num_batches=num_batches,
+        normalized=normalized,
+        project_folder=project_folder,
+        num_images_log=num_images_log,
+        loggers=loggers,
+        obs_image=viz_obs_image,
+        goal_text=goal_text,
+        action_pred=action_pred,
+        action_label=action_label,
+        goal_pos=goal_pos,
+        dist_pred=dist_pred,
+        dist_label=dist_label,
+        dataset_index=dataset_index,
+        use_wandb=use_wandb,
+        mode=eval_type,
+        use_latest=False,
+        wandb_increment_step=False,
+    )
     return dist_loss_logger.average(), action_loss_logger.average(), total_loss_logger.average()
 
 
