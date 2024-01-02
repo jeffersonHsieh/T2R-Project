@@ -2,7 +2,6 @@
 *.log
 *.png
 *.jpg
-*.pkl
 *.html
 *.gz
 *.txt

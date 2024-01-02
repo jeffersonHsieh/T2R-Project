@@ -8,12 +8,10 @@ import airsim
 class AirSimMultirotorControl:
     def __init__(self):
         # Initialize the AirSim client
-        self.client = airsim.MultirotorClient(ip="172.18.80.1")
+        self.client = airsim.MultirotorClient()
         self.client.confirmConnection()
         self.client.reset()
         self.client.enableApiControl(True)
-        self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(0,0,-6), airsim.to_quaternion(0, 0, 0)), True)
-
 
         print("AirSim connection established and API control enabled.")
 
@@ -27,11 +25,11 @@ class AirSimMultirotorControl:
         print(f"Moving forward for {duration} seconds at {speed} m/s.")
         self.client.moveByVelocityAsync(vx=speed, vy=0, vz=0, duration=duration).join()
 
-    def take_picture(self):
-        # Take a picture
-        print("Taking a picture...")
-        responses = self.client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
-        return responses[0].image_data_uint8
+    # def take_picture(self):
+    #     # Take a picture
+    #     print("Taking a picture...")
+    #     responses = self.client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
+    #     return responses[0].image_data_uint8
 
     def land(self):
         # Land the drone
@@ -81,7 +79,7 @@ def main():
     
     # AirSim operations
     airsim_control.takeoff()
-    # rospy.Subscriber("/airsim_node/SimpleFlight/front_center/Scene/compressed", CompressedImage, image_callback)
+    rospy.Subscriber("/airsim_node/SimpleFlight/front_center/Scene/compressed", CompressedImage, image_callback)
     airsim_control.move_forward(duration=10, speed=20)  # Adjust duration and speed as needed
 
     rospy.spin()
